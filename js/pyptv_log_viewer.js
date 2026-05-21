@@ -9,32 +9,40 @@ app.registerExtension({
         const onNodeCreated = nodeType.prototype.onNodeCreated;
 
         nodeType.prototype.onNodeCreated = function () {
-            if (onNodeCreated) onNodeCreated.apply(this, arguments);
+            onNodeCreated?.apply(this, arguments);
 
             const node = this;
 
-            // Скрываем стандартный виджет text (он маленький)
+            // Скрываем стандартный input-виджет text полностью
             const textWidget = node.widgets.find(w => w.name === "text");
             if (textWidget) {
                 textWidget.type = "hidden";
-                textWidget.computeSize = () => [0, 0];
+                textWidget.serialize = false;
+                textWidget.computeSize = () => [0, -4];
             }
 
-            // Большой виджет для лога
+            // Большой виджет для отображения лога
             const logWidget = node.addWidget("text", "log", "", () => {});
             logWidget.serialize = false;
-            logWidget.inputEl = null;
-            logWidget.computeSize = () => [node.size[0], 600];
+            logWidget.computeSize = () => [0, 500];
             node._logWidget = logWidget;
+
+            // Устанавливаем размер ноды под контент
+            const sz = node.computeSize();
+            node.setSize([Math.max(node.size[0], 320), sz[1]]);
         };
 
         const onExecuted = nodeType.prototype.onExecuted;
 
         nodeType.prototype.onExecuted = function (message) {
-            if (onExecuted) onExecuted.apply(this, arguments);
+            onExecuted?.apply(this, arguments);
 
-            if (message?.text && this._logWidget) {
-                this._logWidget.value = message.text[0];
+            let text = null;
+            if (message?.text) {
+                text = Array.isArray(message.text) ? message.text[0] : message.text;
+            }
+            if (text !== null && this._logWidget) {
+                this._logWidget.value = text;
                 this.setSize([this.size[0], this.computeSize()[1]]);
                 app.graph.setDirtyCanvas(true, true);
             }
