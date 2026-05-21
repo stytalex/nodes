@@ -75,16 +75,6 @@ class LTX23EncodeAudioLatents:
                 "audio_vae": ("VAE", {
                     "tooltip": "LTX-2 Audio VAE модель. Загружается через ноду LowVRAMAudioVAELoader из ComfyUI-LTXVideo. Это специализированный аудио энкодер — не путать с видео VAE.",
                 }),
-                "audio_folder": ("STRING", {
-                    "default": "/tmp/dataset",
-                    "multiline": False,
-                    "tooltip": "Папка с аудио файлами датасета. Ожидаются файлы 0000.wav, 0001.wav ... сгенерированные нодой Dramabox Batch. Поддерживаемые форматы: wav, mp3, flac, ogg, m4a, aac.",
-                }),
-                "output_folder": ("STRING", {
-                    "default": "/tmp/dataset/.precomputed/audio_latents",
-                    "multiline": False,
-                    "tooltip": "Папка куда сохраняются аудио-латенты. Тренер ищет их именно здесь. Папка создаётся автоматически если не существует.",
-                }),
                 "device": (["cuda", "cpu"], {
                     "default": "cuda",
                     "tooltip": "Устройство для кодирования. cuda — быстро (GPU). cpu — медленно но работает без GPU.",
@@ -96,8 +86,8 @@ class LTX23EncodeAudioLatents:
             }
         }
 
-    RETURN_TYPES = ("INT", "STRING")
-    RETURN_NAMES = ("processed_count", "output_folder")
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("processed_count",)
     FUNCTION = "encode"
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
@@ -105,11 +95,11 @@ class LTX23EncodeAudioLatents:
     def encode(
         self,
         audio_vae,
-        audio_folder: str,
-        output_folder: str,
         device: str,
         dtype: str,
     ):
+        audio_folder = "/tmp/dataset"
+        output_folder = "/tmp/dataset/.precomputed/audio_latents"
         torch_dtype = torch.bfloat16 if dtype == "bfloat16" else torch.float32
 
         out_path = Path(output_folder)
@@ -165,7 +155,7 @@ class LTX23EncodeAudioLatents:
                 print(f"[LTX23EncodeAudioLatents] ОШИБКА {audio_path.name}: {e}")
 
         print(f"[LTX23EncodeAudioLatents] Готово: {processed}/{len(audio_files)} → {output_folder}")
-        return (processed, str(out_path))
+        return (processed,)
 
 
 # ---------------------------------------------------------------------------

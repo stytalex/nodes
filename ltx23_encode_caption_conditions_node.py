@@ -48,14 +48,6 @@ class LTX23EncodeCaptionConditions:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model_path": ("STRING", {
-                    "default": "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors",
-                    "multiline": False,
-                }),
-                "text_encoder_path": ("STRING", {
-                    "default": "/comfyui/models/text_encoders/gemma-3-12b-it-qat",
-                    "multiline": False,
-                }),
                 "caption": ("STRING", {
                     "default": "young woman with clear smooth skin ash-brown hair grey-blue eyes dark-blue suit",
                     "multiline": True,
@@ -65,10 +57,6 @@ class LTX23EncodeCaptionConditions:
                     "min": 1,
                     "max": 10000,
                     "step": 1,
-                }),
-                "output_folder": ("STRING", {
-                    "default": "/tmp/dataset/.precomputed/conditions",
-                    "multiline": False,
                 }),
             },
             "optional": {
@@ -81,23 +69,23 @@ class LTX23EncodeCaptionConditions:
             }
         }
 
-    RETURN_TYPES = ("INT", "STRING")
-    RETURN_NAMES = ("processed_count", "output_folder")
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("processed_count",)
     FUNCTION = "encode"
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
 
     def encode(
         self,
-        model_path: str,
-        text_encoder_path: str,
         caption: str,
         num_samples: int,
-        output_folder: str,
         lora_trigger: str = "",
         device: str = "cuda",
         load_in_8bit: bool = False,
     ):
+        model_path = "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors"
+        text_encoder_path = "/comfyui/models/text_encoders/gemma-3-12b-it-qat"
+        output_folder = "/tmp/dataset/.precomputed/conditions"
         out_path = Path(output_folder)
         out_path.mkdir(parents=True, exist_ok=True)
 
@@ -158,7 +146,7 @@ class LTX23EncodeCaptionConditions:
             processed += 1
 
         print(f"[LTX23EncodeCaptionConditions] Готово: {processed}/{num_samples} → {output_folder}")
-        return (processed, str(out_path))
+        return (processed,)
 
 
 NODE_CLASS_MAPPINGS = {

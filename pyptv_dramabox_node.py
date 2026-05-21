@@ -489,41 +489,6 @@ class Dramabox_pyPTV:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "checkpoint": ("STRING", {
-                    "default": "/comfyui/models/dramabox/dramabox-dit-v1.safetensors",
-                    "multiline": False,
-                    "tooltip": "DiT трансформер DramaBox",
-                }),
-                "audio_components": ("STRING", {
-                    "default": "/comfyui/models/dramabox/dramabox-audio-components.safetensors",
-                    "multiline": False,
-                    "tooltip": "Audio VAE + Vocoder DramaBox",
-                }),
-                "silence_latent": ("STRING", {
-                    "default": "/comfyui/models/dramabox/assets/silence_latent_frame.pt",
-                    "multiline": False,
-                    "tooltip": "Silence latent для IC-LoRA (assets/silence_latent_frame.pt)",
-                }),
-                "full_checkpoint": ("STRING", {
-                    "default": "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors",
-                    "multiline": False,
-                    "tooltip": "LTX-2.3 full checkpoint (содержит Gemma text encoder)",
-                }),
-                "gemma_root": ("STRING", {
-                    "default": "/comfyui/models/text_encoders/gemma-3-12b-it-qat",
-                    "multiline": False,
-                    "tooltip": "Папка с Gemma моделью",
-                }),
-                "prompts_json": ("STRING", {
-                    "default": "/tmp/dataset/prompts.json",
-                    "multiline": False,
-                    "tooltip": "JSON файл со списком промптов",
-                }),
-                "output_folder": ("STRING", {
-                    "default": "/tmp/dataset",
-                    "multiline": False,
-                    "tooltip": "Папка датасета — аудио сохраняется как 0000.wav, 0001.wav ...",
-                }),
                 "cfg_scale": ("FLOAT", {"default": 2.5, "min": 0.1, "max": 20.0, "step": 0.1}),
                 "stg_scale": ("FLOAT", {"default": 1.5, "min": 0.0, "max": 10.0, "step": 0.1}),
                 "duration_multiplier": ("FLOAT", {
@@ -552,20 +517,13 @@ class Dramabox_pyPTV:
         }
 
     CATEGORY = "pyPTV"
-    RETURN_TYPES = ("INT", "STRING")
-    RETURN_NAMES = ("processed_count", "output_folder")
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("processed_count",)
     FUNCTION = "generate_batch"
     OUTPUT_NODE = True
 
     def generate_batch(
         self,
-        checkpoint: str,
-        audio_components: str,
-        silence_latent: str,
-        full_checkpoint: str,
-        gemma_root: str,
-        prompts_json: str,
-        output_folder: str,
         cfg_scale: float,
         stg_scale: float,
         duration_multiplier: float,
@@ -577,6 +535,15 @@ class Dramabox_pyPTV:
         device: str,
         voice_ref=None,
     ):
+        # --- Жёстко заданные пути (не меняются) ---
+        checkpoint = "/comfyui/models/dramabox/dramabox-dit-v1.safetensors"
+        audio_components = "/comfyui/models/dramabox/dramabox-audio-components.safetensors"
+        silence_latent = "/comfyui/models/dramabox/assets/silence_latent_frame.pt"
+        full_checkpoint = "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors"
+        gemma_root = "/comfyui/models/text_encoders/gemma-3-12b-it-qat"
+        prompts_json = "/tmp/dataset/prompts.json"
+        output_folder = "/tmp/dataset"
+
         # --- Проверить пути ---
         for path, name in [
             (checkpoint, "checkpoint"),
@@ -671,7 +638,7 @@ class Dramabox_pyPTV:
             pbar.update(1)
 
         print(f"[Dramabox_pyPTV] Готово: {processed}/{len(prompts)} → {output_folder}")
-        return (processed, str(out_path))
+        return (processed,)
 
 
 # =====================================================================

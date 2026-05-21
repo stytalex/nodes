@@ -100,14 +100,6 @@ class LTX23EncodeImageLatents:
         return {
             "required": {
                 "vae": ("VAE",),
-                "images_folder": ("STRING", {
-                    "default": "/tmp/dataset",
-                    "multiline": False,
-                }),
-                "output_folder": ("STRING", {
-                    "default": "/tmp/dataset/.precomputed/latents",
-                    "multiline": False,
-                }),
                 "width": ("INT", {
                     "default": 768,
                     "min": 32,
@@ -125,8 +117,8 @@ class LTX23EncodeImageLatents:
             }
         }
 
-    RETURN_TYPES = ("INT", "STRING")
-    RETURN_NAMES = ("processed_count", "output_folder")
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("processed_count",)
     FUNCTION = "encode"
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
@@ -134,13 +126,13 @@ class LTX23EncodeImageLatents:
     def encode(
         self,
         vae,
-        images_folder: str,
-        output_folder: str,
         width: int,
         height: int,
         device: str,
         dtype: str,
     ):
+        images_folder = "/tmp/dataset"
+        output_folder = "/tmp/dataset/.precomputed/latents"
         torch_dtype = torch.bfloat16 if dtype == "bfloat16" else torch.float32
 
         out_path = Path(output_folder)
@@ -177,7 +169,7 @@ class LTX23EncodeImageLatents:
                 print(f"[LTX23EncodeImageLatents] ОШИБКА {img_path.name}: {e}")
 
         print(f"[LTX23EncodeImageLatents] Готово: {processed}/{len(images)} → {output_folder}")
-        return (processed, str(out_path))
+        return (processed,)
 
 
 NODE_CLASS_MAPPINGS = {
