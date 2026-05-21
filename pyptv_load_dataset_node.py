@@ -106,10 +106,21 @@ class LTX23LoadDataset:
         # --- Удаляем временную папку ---
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-        # --- Подсчёт скачанных файлов ---
-        downloaded = sum(1 for p in dest.rglob("*") if p.is_file())
-        status = f"OK: {downloaded} files"
-        print(f"[LTX23LoadDataset] {status} → {dest}")
+        # --- Статистика ---
+        file_list = sorted(p for p in dest.rglob("*") if p.is_file())
+        downloaded = len(file_list)
+
+        lines = [f"Downloaded {downloaded} files:"]
+        total_bytes = 0
+        for f in file_list:
+            size = f.stat().st_size
+            total_bytes += size
+            size_str = f"{size / 1024 / 1024:.2f} MB" if size > 1024 * 1024 else f"{size / 1024:.1f} KB"
+            lines.append(f"  {f.name}  ({size_str})")
+        lines.append(f"Total: {total_bytes / 1024 / 1024:.2f} MB")
+
+        status = "\n".join(lines)
+        print(f"[LTX23LoadDataset] {downloaded} files → {dest}")
 
         return (downloaded, status)
 
