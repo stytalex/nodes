@@ -66,15 +66,9 @@ class LTX23TrainingLora:
                 "load_checkpoint": ("STRING", {
                     "default": "",
                     "multiline": False,
-                    "tooltip": "Путь к чекпоинту для продолжения обучения. Оставьте пустым чтобы начать заново. Можно указать папку — тренер сам найдёт последний чекпоинт.",
+                    "tooltip": "Путь к файлу .safetensors для продолжения обучения. Пример: /tmp/lora_output/lora_000250.safetensors. Оставь пустым чтобы начать заново. Можно указать папку — тренер сам найдёт последний чекпоинт.",
                 }),
 
-                # --- Датасет ---
-                "preprocessed_data_root": ("STRING", {
-                    "default": "/tmp/dataset",
-                    "multiline": False,
-                    "tooltip": "Папка датасета. Тренер автоматически ищет подпапку .precomputed/ внутри неё с готовыми латентами.",
-                }),
                 "with_audio": ("BOOLEAN", {
                     "default": True,
                     "tooltip": "Обучать аудио ветку модели вместе с видео. Требует папку audio_latents/ в датасете. Если выключить — обучается только видео.",
@@ -222,7 +216,6 @@ class LTX23TrainingLora:
         components,
         dataset,
         load_checkpoint: str,
-        preprocessed_data_root: str,
         with_audio: bool,
         num_dataloader_workers: int,
         lora_rank: int,
