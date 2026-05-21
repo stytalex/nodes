@@ -32,15 +32,18 @@ def _collect_images(folder: str) -> list[Path]:
     )
 
 
-def _load_image_tensor(path: Path, target_width: int, target_height: int) -> torch.Tensor:
+def _load_image_tensor(path: Path) -> torch.Tensor:
     """
-    Загрузить изображение, ресайзнуть до target_width x target_height,
+    Загрузить изображение, ресайзнуть до ближайшего кратного 32
+    (берём оригинальный размер, округляем вниз до ×32),
     вернуть tensor [1, 3, H, W] в диапазоне [-1, 1].
     """
     img = Image.open(path).convert("RGB")
 
-    w = (target_width  // 32) * 32
-    h = (target_height // 32) * 32
+    w = (img.width  // 32) * 32
+    h = (img.height // 32) * 32
+    w = max(w, 32)
+    h = max(h, 32)
 
     img = img.resize((w, h), Image.LANCZOS)
 
@@ -82,17 +85,12 @@ class LTX23EncodeImageLatents:
     Batch-кодирование изображений в видео-латенты LTX-2.
 
     Входы:
-        vae            — стандартный ComfyUI VAE (LTX-2 чекпоинт)
-        images_folder  — папка с изображениями
-        output_folder  — куда сохранять .pt файлы (папка latents/)
-        width          — целевая ширина (кратная 32)
-        height         — целевая высота (кратная 32)
-        device         — cuda / cpu
-        dtype          — bfloat16 / float32
+        vae    — стандартный ComfyUI VAE (LTX-2 чекпоинт)
+        device — cuda / cpu
+        dtype  — bfloat16 / float32
 
     Выход:
         processed_count — сколько файлов обработано
-        output_folder   — путь к папке с .pt файлами
     """
 
     @classmethod
@@ -100,18 +98,6 @@ class LTX23EncodeImageLatents:
         return {
             "required": {
                 "vae": ("VAE",),
-                "width": ("INT", {
-                    "default": 768,
-                    "min": 32,
-                    "max": 2048,
-                    "step": 32,
-                }),
-                "height": ("INT", {
-                    "default": 512,
-                    "min": 32,
-                    "max": 2048,
-                    "step": 32,
-                }),
                 "device": (["cuda", "cpu"], {"default": "cuda"}),
                 "dtype": (["bfloat16", "float32"], {"default": "bfloat16"}),
             }
@@ -126,8 +112,6 @@ class LTX23EncodeImageLatents:
     def encode(
         self,
         vae,
-        width: int,
-        height: int,
         device: str,
         dtype: str,
     ):
@@ -161,7 +145,7 @@ class LTX23EncodeImageLatents:
             print(f"[LTX23EncodeImageLatents] [{idx+1}/{len(images)}] {img_path.name}")
 
             try:
-                image_tensor = _load_image_tensor(img_path, width, height)
+                image_tensor = _load_image_tensor(img_path)
                 latent_data  = _encode_image(image_tensor, vae_encoder, device, torch_dtype)
                 torch.save(latent_data, out_file)
                 processed += 1
