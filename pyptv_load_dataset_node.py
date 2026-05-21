@@ -36,11 +36,10 @@ class LTX23LoadDataset:
             }
         }
 
-    RETURN_TYPES = ("INT",)
-    RETURN_NAMES = ("downloaded",)
+    RETURN_TYPES = ("INT", "STRING")
+    RETURN_NAMES = ("downloaded", "log")
     FUNCTION = "download"
     CATEGORY = "pyPTV"
-    OUTPUT_NODE = True
 
     def download(
         self,
@@ -128,7 +127,7 @@ class LTX23LoadDataset:
         status = "\n".join(lines)
         print(f"[LTX23LoadDataset] {downloaded} files → {dest}")
 
-        return {"ui": {"status": [status]}, "result": (downloaded,)}
+        return (downloaded, status)
 
 
 NODE_CLASS_MAPPINGS = {

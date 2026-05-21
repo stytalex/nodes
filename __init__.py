@@ -120,6 +120,16 @@ try:
     NODE_DISPLAY_NAME_MAPPINGS.update(_D12)
 except Exception as e:
     print(f"[pyPTV] Failed to load pyptv_load_dataset_node: {e}")
+
+try:
+    from .pyptv_log_viewer_node import (
+        NODE_CLASS_MAPPINGS       as _M13,
+        NODE_DISPLAY_NAME_MAPPINGS as _D13,
+    )
+    NODE_CLASS_MAPPINGS.update(_M13)
+    NODE_DISPLAY_NAME_MAPPINGS.update(_D13)
+except Exception as e:
+    print(f"[pyPTV] Failed to load pyptv_log_viewer_node: {e}")
     
 WEB_DIRECTORY = "./js"
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
