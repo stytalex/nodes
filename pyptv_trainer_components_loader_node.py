@@ -1,9 +1,29 @@
 """
 Trainer Components Loader (pyPTV)
-Единый центр загрузки всех моделей для LTX-2.3 / DramaBox pipeline.
+═══════════════════════════════════════════════════════════════════════════════
+Единая точка загрузки ВСЕХ моделей для пайплайна LTX-2.3 + DramaBox.
 
-Загружает один раз через ltx_trainer / ltx_core.
-Возвращает PYPTV_MODELS — dict со всеми компонентами.
+Что делает:
+  1. Загружает .safetensors один раз в VRAM через ltx_trainer.
+  2. Кэширует в глобальном dict — повторные запуски берут из кэша.
+  3. Отдаёт PYPTV_MODELS — dict со всеми компонентами.
+
+Что входит в PYPTV_MODELS:
+  • video_vae_encoder    — кодирует картинки → video latents
+  • video_vae_decoder    — декодирует video latents → пиксели
+  • audio_vae_encoder    — кодирует аудио → audio latents
+  • audio_vae_decoder    — декодирует audio latents → мел-спектр
+  • vocoder              — мел-спектр → waveform
+  • text_encoder         — Gemma (кодирует текст → hidden states)
+  • embeddings_processor — connectors (hidden states → video/audio embeddings)
+  • transformer          — LTX-2.3 DiT (для inference / тренировки)
+  • dit_model            — DramaBox DiT (для генерации аудио)
+  • paths                — dict с путями к .safetensors (для тренера)
+
+Как пользоваться:
+  1. Создай эту ноду на канвасе.
+  2. Подключи её выход components ко всем нодам которые требуют PYPTV_MODELS.
+  3. Больше нигде не надо указывать пути к .safetensors — всё здесь.
 """
 
 import torch

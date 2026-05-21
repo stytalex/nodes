@@ -1,9 +1,28 @@
 """
-Dataset Loader (pyPTV)
-Скачивает содержимое подпапки из приватного репозитория HuggingFace Hub
-и помещает файлы в /tmp/dataset (предварительно очищая её).
+Dataset Loader from HuggingFace
+═══════════════════════════════════════════════════════════════════════════════
+Скачивает датасет с HuggingFace Hub в /tmp/dataset.
 
-Использует `hf download` CLI (huggingface_hub >= 1.11).
+Как работает:
+  1. Полностью очищает /tmp/dataset (включая проверку что всё удалено).
+  2. Запускает hf download repo_id --include "subfolder/*" в /tmp/hf_repo_download.
+  3. Проверяет что подпапка существует и не пуста — иначе ошибка.
+  4. Переименовывает файлы в 001.ext, 002.ext ... (по алфавиту).
+  5. Перемещает их в /tmp/dataset.
+  6. Удаляет временную папку.
+  7. Возвращает статистику: количество файлов + размер.
+
+Авторизация:
+  • hf_token — токен для приватных репо. Вводится руками в ноду.
+
+Входы:
+  • repo_id   — репозиторий HF (default: avidscreator/datasets)
+  • subfolder — подпапка внутри репо (default: mydataset)
+  • hf_token  — HuggingFace access token
+
+Выходы:
+  • downloaded — сколько файлов скачано (INT)
+  • log        — статистика по файлам (STRING) — цепляй к Log Viewer
 """
 
 import shutil

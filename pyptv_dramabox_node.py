@@ -1,18 +1,34 @@
 """
-Dramabox batch TTS — читает /tmp/dataset/prompts.json,
-генерирует аудио для каждого промпта через DramaBox DiT,
-сохраняет 0000.wav, 0001.wav ... в /tmp/dataset/
+DramaBox Batch TTS
+═══════════════════════════════════════════════════════════════════════════════
+Генерирует озвучку для каждого промпта из /tmp/dataset/prompts.json.
+Сохраняет 0000.wav, 0001.wav ... в /tmp/dataset/
 
-Использует только ltx_core + ltx_trainer — без ltx_pipelines.
+Как работает:
+  1. Читает /tmp/dataset/prompts.json — массив строк (промптов).
+  2. Для каждого промпта:
+     a. Оценивает длительность из текста (или берёт фиксированную).
+     b. Кодирует текст через Gemma + embeddings processor (из PYPTV_MODELS).
+     c. Если подан voice_ref — кодирует reference аудио через Audio VAE
+        и применяет IC-LoRA conditioning (клонирование голоса).
+     d. Запускает denoising loop через DramaBox DiT (30 шагов Euler).
+     e. Декодирует латенты → waveform через Audio VAE decoder + Vocoder.
+     f. Сохраняет .wav.
+  3. Пропускает уже существующие файлы — можно перезапускать safely.
 
-Структура моделей:
-  /comfyui/models/dramabox/
-  ├── dramabox-dit-v1.safetensors
-  ├── dramabox-audio-components.safetensors
-  └── assets/silence_latent_frame.pt
+Входы:
+  • components          — PYPTV_MODELS из Trainer Components Loader
+  • cfg_scale           — насколько строго следовать промпту (2.5)
+  • stg_scale           — Skip-Token Guidance (1.5)
+  • duration_multiplier — запас к авто-оценке длительности (1.1)
+  • gen_duration        — фиксированная длительность в сек (0 = авто)
+  • ref_duration        — сколько секунд voice ref использовать (10)
+  • seed / seed_mode    — fixed / increment / random
+  • rescale_scale       — авто-коррекция латентов при CFG (auto)
+  • voice_ref           — опциональное референсное аудио (AUDIO)
 
-  /comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors
-  /comfyui/models/text_encoders/gemma-3-12b-it-qat/
+Выход:
+  • processed_count — сколько wav сгенерировано
 """
 
 import json

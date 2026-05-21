@@ -1,16 +1,31 @@
 """
-Нода 1: Картинки → Video Latents (.pt)
-Прогоняет папку с изображениями через LTX-2 Video VAE Encoder
-и сохраняет латенты в формате, который ожидает тренер.
+Картинки → Video Latents (.pt)
+═══════════════════════════════════════════════════════════════════════════════
+Берёт все изображения из /tmp/dataset и прогоняет их через Video VAE Encoder.
+Результат — латенты для тренера, сохраняются в /tmp/dataset/.precomputed/latents/
 
-Формат выходного .pt:
-{
-    "latents": Tensor [128, 1, H//32, W//32],
-    "num_frames": 1,
-    "height": H // 32,
-    "width":  W // 32,
-    "fps": 25.0,
-}
+Как работает:
+  1. Собирает все картинки из /tmp/dataset (jpg, png, webp, bmp).
+  2. Сортирует по имени — порядок важен, должен совпадать с аудио.
+  3. Каждая картинка ресайзится до оригинального размера, округлённого до ×32.
+  4. Через video_vae_encoder (из PYPTV_MODELS) кодируется в latent tensor.
+  5. Сохраняет как 0000.pt, 0001.pt, ...
+
+Формат .pt:
+  {
+      "latents":    Tensor [128, 1, H//32, W//32],
+      "num_frames": 1,
+      "height":     H // 32,
+      "width":      W // 32,
+      "fps":        25.0,
+  }
+
+Входы:
+  • components — PYPTV_MODELS из Trainer Components Loader
+  • dtype      — bfloat16 (быстрее) или float32 (точнее)
+
+Выход:
+  • processed_count — сколько картинок закодировано
 """
 
 from pathlib import Path
@@ -85,7 +100,7 @@ class LTX23EncodeImageLatents:
     Batch-кодирование изображений в видео-латенты LTX-2.
 
     Входы:
-        vae    — стандартный ComfyUI VAE (LTX-2 чекпоинт)
+        video_vae_encoder — из Trainer Components Loader (PYPTV_MODELS)
         device — cuda / cpu
         dtype  — bfloat16 / float32
 

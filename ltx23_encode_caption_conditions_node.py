@@ -1,14 +1,30 @@
 """
-Нода 3: Caption → Conditions (.pt)
-Читает caption из /tmp/dataset/caption.txt, кодирует через Gemma + embeddings processor
-и сохраняет N одинаковых .pt файлов + N .txt файлов (001.txt, 002.txt ...).
+Caption → Conditions (.pt)
+═══════════════════════════════════════════════════════════════════════════════
+Читает единый caption из /tmp/dataset/caption.txt, кодирует его через
+Gemma text encoder + embeddings processor (ltx_trainer) и сохраняет N
+одинаковых conditions-файлов.
 
-Формат выходного .pt:
-{
-    "video_prompt_embeds": Tensor [seq_len, 4096],
-    "audio_prompt_embeds": Tensor [seq_len, 4096],
-    "prompt_attention_mask": Tensor [seq_len] bool,
-}
+Как работает:
+  1. Читает /tmp/dataset/caption.txt — должен содержать один текст.
+  2. Gemma (text_encoder из PYPTV_MODELS) кодирует текст → hidden states.
+  3. Embeddings processor превращает hidden states → video + audio embeddings.
+  4. Сохраняет N файлов: /tmp/dataset/.precomputed/conditions/001.pt ... 00N.pt
+     Все файлы одинаковые — один caption на весь датасет.
+
+Формат .pt:
+  {
+      "video_prompt_embeds":   Tensor [seq_len, 4096],
+      "audio_prompt_embeds":   Tensor [seq_len, 4096],
+      "prompt_attention_mask": Tensor [seq_len] bool,
+  }
+
+Входы:
+  • components  — PYPTV_MODELS из Trainer Components Loader
+  • num_samples — сколько conditions сделать (default 25, = размер датасета)
+
+Выход:
+  • processed_count — сколько .pt файлов сохранено
 """
 
 from pathlib import Path

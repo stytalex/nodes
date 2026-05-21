@@ -1,11 +1,36 @@
 """
-Запускает LtxvTrainer из ltx_trainer на основе преподготовленных латентов.
-preprocessed_data_root = /tmp/dataset
-Тренер автоматически ищет /tmp/dataset/.precomputed/
-и берёт оттуда latents/, audio_latents/, conditions/.
+LTX-2.3 Train LoRA
+═══════════════════════════════════════════════════════════════════════════════
+Запускает обучение LoRA на преподготовленных латентах.
 
-Использует LtxTrainerConfig + LtxvTrainer напрямую — без subprocess,
-без yaml файлов на диске (конфиг собирается в памяти).
+Что нужно ДО запуска:
+  1. /tmp/dataset/.precomputed/latents/       — video latents ( Encode Image Latents )
+  2. /tmp/dataset/.precomputed/audio_latents/ — audio latents ( Encode Audio Latents )
+  3. /tmp/dataset/.precomputed/conditions/    — conditions     ( Encode Caption Conditions )
+
+Как работает:
+  1. Берёт пути к моделям из components (PYPTV_MODELS).
+  2. Собирает LtxTrainerConfig в памяти — без yaml, без subprocess.
+  3. Создаёт LtxvTrainer и запускает обучение.
+  4. Сохраняет чекпоинты LoRA и валидационные видео.
+
+Основные параметры:
+  • lora_rank / lora_alpha    — размер LoRA матриц (32/32)
+  • learning_rate             — скорость обучения (1e-4)
+  • steps                     — сколько шагов обучать (2000)
+  • batch_size                — размер батча (1)
+  • mixed_precision           — bf16 / fp16 / no
+  • with_audio                — обучать аудио-ветку тоже
+  • validation_prompt         — промпт для тестовых видео
+  • validation_steps          — как часто генерировать валидацию
+  • checkpoint_interval       — как часто сохранять чекпоинты
+
+Входы:
+  • components         — PYPTV_MODELS из Trainer Components Loader
+  • Все остальные — гиперпараметры обучения
+
+Выход:
+  • output_dir — папка с весами LoRA и валидациями
 """
 
 from pathlib import Path

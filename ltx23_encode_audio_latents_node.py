@@ -1,15 +1,29 @@
 """
-Нода 2: Аудио файлы → Audio Latents (.pt)
-Прогоняет папку с аудио файлами через LTX-2 Audio VAE
-и сохраняет латенты в формате, который ожидает тренер.
+Аудио файлы → Audio Latents (.pt)
+═══════════════════════════════════════════════════════════════════════════════
+Берёт все аудио файлы из /tmp/dataset и прогоняет их через Audio VAE Encoder.
+Результат — аудио-латенты для тренера, сохраняются в
+/tmp/dataset/.precomputed/audio_latents/
 
-Формат выходного .pt:
-{
-    "latents": Tensor [8, T, 16],
-}
+Как работает:
+  1. Собирает все аудио из /tmp/dataset (wav, mp3, flac, ogg, m4a, aac).
+  2. Сортирует по имени — порядок должен совпадать с картинками.
+  3. Загружает waveform [1, 1, N], микширует в моно если стерео.
+  4. Через audio_vae_encoder (из PYPTV_MODELS) кодируется в latent.
+     VAE сам делает ресемплинг → mel-спектр → autoencoder → normalize.
+  5. Сохраняет как 0000.pt, 0001.pt, ...
 
-Использует AudioVAE.encode() из ComfyUI напрямую —
-ровно тот же путь что и в официальном коде LTX-2.
+Формат .pt:
+  {
+      "latents": Tensor [8, T, 16],
+  }
+
+Входы:
+  • components — PYPTV_MODELS из Trainer Components Loader
+  • dtype      — bfloat16 (быстрее) или float32 (точнее)
+
+Выход:
+  • processed_count — сколько аудио закодировано
 """
 
 from pathlib import Path
@@ -60,7 +74,7 @@ class LTX23EncodeAudioLatents:
     """
     Batch-кодирование аудио файлов в аудио-латенты LTX-2.
 
-    Использует AudioVAE из ComfyUI-LTXVideo (LowVRAMAudioVAELoader).
+    Использует Audio VAE Encoder из ltx_trainer.
     AudioVAE.encode() делает всё сам: ресемплинг → mel-спектрограмма →
     кодирование → нормализация латентов.
 
