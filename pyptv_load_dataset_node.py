@@ -55,8 +55,8 @@ class LTX23LoadDataset:
             }
         }
 
-    RETURN_TYPES = ("INT", "STRING")
-    RETURN_NAMES = ("downloaded", "log")
+    RETURN_TYPES = ("PYPTV_DATASET", "STRING")
+    RETURN_NAMES = ("dataset", "log")
     FUNCTION = "download"
     CATEGORY = "pyPTV"
 
@@ -149,7 +149,8 @@ class LTX23LoadDataset:
         status = "\n".join(lines)
         print(f"[LTX23LoadDataset] {downloaded} files → {dest}")
 
-        return (downloaded, status)
+        dataset = {"root": str(dest)}
+        return (dataset, status)
 
 
 NODE_CLASS_MAPPINGS = {

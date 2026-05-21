@@ -65,13 +65,6 @@ from ltx_core.tools import AudioLatentTools
 from ltx_core.types import Audio, AudioLatentShape, LatentState, VideoPixelShape
 
 # ---------------------------------------------------------------------------
-# Пути (захардкожены — не меняются)
-# ---------------------------------------------------------------------------
-_PROMPTS_JSON  = "/tmp/dataset/prompts.json"
-_OUTPUT_FOLDER = "/tmp/dataset"
-
-
-# ---------------------------------------------------------------------------
 # AudioConditionByReferenceLatent (из DramaBox src/audio_conditioning.py)
 # ---------------------------------------------------------------------------
 class AudioConditionByReferenceLatent(ConditioningItem):
@@ -400,6 +393,7 @@ class Dramabox_pyPTV:
         return {
             "required": {
                 "components": ("PYPTV_MODELS",),
+                "dataset": ("PYPTV_DATASET",),
                 "cfg_scale": ("FLOAT", {
                     "default": 2.5, "min": 0.1, "max": 20.0, "step": 0.1,
                     "tooltip": "Classifier-Free Guidance. Выше = точнее следует промпту. Ниже = естественнее звучит.",
@@ -441,14 +435,15 @@ class Dramabox_pyPTV:
         }
 
     CATEGORY     = "pyPTV"
-    RETURN_TYPES = ("INT",)
-    RETURN_NAMES = ("processed_count",)
+    RETURN_TYPES = ("INT", "PYPTV_DATASET")
+    RETURN_NAMES = ("processed_count", "dataset")
     FUNCTION     = "generate_batch"
     OUTPUT_NODE  = True
 
     def generate_batch(
         self,
         components,
+        dataset,
         cfg_scale:           float,
         stg_scale:           float,
         duration_multiplier: float,
@@ -460,13 +455,16 @@ class Dramabox_pyPTV:
         voice_ref=None,
     ):
         device = "cuda"
+        root = dataset["root"]
+        prompts_json = f"{root}/prompts.json"
+        output_folder = root
 
         # --- Проверить пути ---
-        if not os.path.exists(_PROMPTS_JSON):
-            raise ValueError(f"[Dramabox_pyPTV] Не найден {_PROMPTS_JSON}")
+        if not os.path.exists(prompts_json):
+            raise ValueError(f"[Dramabox_pyPTV] Не найден {prompts_json}")
 
         # --- Читаем промпты ---
-        with open(_PROMPTS_JSON, "r", encoding="utf-8") as f:
+        with open(prompts_json, "r", encoding="utf-8") as f:
             prompts = json.load(f)
         if not isinstance(prompts, list):
             raise ValueError("prompts.json должен быть JSON array строк")
@@ -474,7 +472,7 @@ class Dramabox_pyPTV:
         print(f"[Dramabox_pyPTV] {len(prompts)} промптов, seed_mode={seed_mode}")
 
         # --- Выходная папка ---
-        out_path = Path(_OUTPUT_FOLDER)
+        out_path = Path(output_folder)
         out_path.mkdir(parents=True, exist_ok=True)
 
         # --- Voice ref на диск ---

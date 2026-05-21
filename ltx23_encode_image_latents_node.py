@@ -113,12 +113,13 @@ class LTX23EncodeImageLatents:
         return {
             "required": {
                 "components": ("PYPTV_MODELS",),
+                "dataset": ("PYPTV_DATASET",),
                 "dtype": (["bfloat16", "float32"], {"default": "bfloat16"}),
             }
         }
 
-    RETURN_TYPES = ("INT",)
-    RETURN_NAMES = ("processed_count",)
+    RETURN_TYPES = ("INT", "PYPTV_DATASET")
+    RETURN_NAMES = ("processed_count", "dataset")
     FUNCTION = "encode"
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
@@ -126,14 +127,16 @@ class LTX23EncodeImageLatents:
     def encode(
         self,
         components,
+        dataset,
         dtype: str,
     ):
         vae_encoder = components.get("video_vae_encoder")
         if vae_encoder is None:
             raise RuntimeError("Video VAE encoder не загружен. Подключите Trainer Components Loader.")
         device = "cuda"
-        images_folder = "/tmp/dataset"
-        output_folder = "/tmp/dataset/.precomputed/latents"
+        root = dataset["root"]
+        images_folder = root
+        output_folder = f"{root}/.precomputed/latents"
         torch_dtype = torch.bfloat16 if dtype == "bfloat16" else torch.float32
 
         out_path = Path(output_folder)
@@ -168,7 +171,7 @@ class LTX23EncodeImageLatents:
                 print(f"[LTX23EncodeImageLatents] ОШИБКА {img_path.name}: {e}")
 
         print(f"[LTX23EncodeImageLatents] Готово: {processed}/{len(images)} → {output_folder}")
-        return (processed,)
+        return (processed, dataset)
 
 
 NODE_CLASS_MAPPINGS = {

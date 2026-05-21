@@ -87,6 +87,7 @@ class LTX23EncodeAudioLatents:
         return {
             "required": {
                 "components": ("PYPTV_MODELS",),
+                "dataset": ("PYPTV_DATASET",),
                 "dtype": (["bfloat16", "float32"], {
                     "default": "bfloat16",
                     "tooltip": "Точность вычислений при кодировании. bfloat16 — быстрее, меньше VRAM. float32 — выше точность но медленнее и требует больше памяти.",
@@ -94,8 +95,8 @@ class LTX23EncodeAudioLatents:
             }
         }
 
-    RETURN_TYPES = ("INT",)
-    RETURN_NAMES = ("processed_count",)
+    RETURN_TYPES = ("INT", "PYPTV_DATASET")
+    RETURN_NAMES = ("processed_count", "dataset")
     FUNCTION = "encode"
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
@@ -103,14 +104,16 @@ class LTX23EncodeAudioLatents:
     def encode(
         self,
         components,
+        dataset,
         dtype: str,
     ):
         audio_vae = components.get("audio_vae_encoder")
         if audio_vae is None:
             raise RuntimeError("Audio VAE encoder не загружен. Подключите Trainer Components Loader.")
         device = "cuda"
-        audio_folder = "/tmp/dataset"
-        output_folder = "/tmp/dataset/.precomputed/audio_latents"
+        root = dataset["root"]
+        audio_folder = root
+        output_folder = f"{root}/.precomputed/audio_latents"
         torch_dtype = torch.bfloat16 if dtype == "bfloat16" else torch.float32
 
         out_path = Path(output_folder)
@@ -163,7 +166,7 @@ class LTX23EncodeAudioLatents:
                 print(f"[LTX23EncodeAudioLatents] ОШИБКА {audio_path.name}: {e}")
 
         print(f"[LTX23EncodeAudioLatents] Готово: {processed}/{len(audio_files)} → {output_folder}")
-        return (processed,)
+        return (processed, dataset)
 
 
 # ---------------------------------------------------------------------------

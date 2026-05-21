@@ -45,6 +45,7 @@ class LTX23EncodeCaptionConditions:
         return {
             "required": {
                 "components": ("PYPTV_MODELS",),
+                "dataset": ("PYPTV_DATASET",),
                 "num_samples": ("INT", {
                     "default": 25,
                     "min": 1,
@@ -54,15 +55,16 @@ class LTX23EncodeCaptionConditions:
             }
         }
 
-    RETURN_TYPES = ("INT",)
-    RETURN_NAMES = ("processed_count",)
+    RETURN_TYPES = ("INT", "PYPTV_DATASET")
+    RETURN_NAMES = ("processed_count", "dataset")
     FUNCTION = "encode"
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
 
-    def encode(self, components, num_samples: int):
-        caption_path = Path("/tmp/dataset/caption.txt")
-        output_folder = "/tmp/dataset/.precomputed/conditions"
+    def encode(self, components, dataset, num_samples: int):
+        root = dataset["root"]
+        caption_path = Path(f"{root}/caption.txt")
+        output_folder = f"{root}/.precomputed/conditions"
         device = "cuda"
 
         text_encoder = components.get("text_encoder")
@@ -112,7 +114,7 @@ class LTX23EncodeCaptionConditions:
             processed += 1
 
         print(f"[LTX23EncodeCaptionConditions] Готово: {processed}/{num_samples}")
-        return (processed,)
+        return (processed, dataset)
 
 
 NODE_CLASS_MAPPINGS = {

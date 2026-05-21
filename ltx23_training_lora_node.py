@@ -61,6 +61,7 @@ class LTX23TrainingLora:
         return {
             "required": {
                 "components": ("PYPTV_MODELS",),
+                "dataset": ("PYPTV_DATASET",),
                 # --- Модель ---
                 "load_checkpoint": ("STRING", {
                     "default": "",
@@ -210,8 +211,8 @@ class LTX23TrainingLora:
             }
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("output_dir",)
+    RETURN_TYPES = ("STRING", "PYPTV_DATASET")
+    RETURN_NAMES = ("output_dir", "dataset")
     FUNCTION = "train"
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
@@ -219,6 +220,7 @@ class LTX23TrainingLora:
     def train(
         self,
         components,
+        dataset,
         load_checkpoint: str,
         preprocessed_data_root: str,
         with_audio: bool,
@@ -250,6 +252,8 @@ class LTX23TrainingLora:
         seed: int,
         first_frame_conditioning_p: float,
     ):
+        root = dataset["root"]
+        preprocessed_data_root = root
         paths = components.get("paths", {})
         model_path = paths.get("model_path", "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors")
         text_encoder_path = paths.get("text_encoder_path", "/comfyui/models/text_encoders/gemma-3-12b-it-qat")
@@ -260,7 +264,7 @@ class LTX23TrainingLora:
 
         if validation_frames % 8 != 1:
             validation_frames = (validation_frames // 8) * 8 + 1
-            print(f"[training_ltx23_lora] validation_frames скорректировано до {validation_frames}")
+            print(f"[LTX23TrainingLora] validation_frames скорректировано до {validation_frames}")
 
         config = LtxTrainerConfig(
             seed=seed,
@@ -343,20 +347,20 @@ class LTX23TrainingLora:
             wandb=WandbConfig(enabled=False),
         )
 
-        print(f"[training_ltx23_lora] Запуск тренировки: {steps} шагов → {output_dir}")
-        print(f"[training_ltx23_lora] LoRA rank={lora_rank}, lr={learning_rate}, with_audio={with_audio}")
+        print(f"[LTX23TrainingLora] Запуск тренировки: {steps} шагов → {output_dir}")
+        print(f"[LTX23TrainingLora] LoRA rank={lora_rank}, lr={learning_rate}, with_audio={with_audio}")
         if checkpoint:
-            print(f"[training_ltx23_lora] Продолжение с чекпоинта: {checkpoint}")
+            print(f"[LTX23TrainingLora] Продолжение с чекпоинта: {checkpoint}")
 
         trainer = LtxvTrainer(config)
         saved_path, stats = trainer.train(disable_progress_bars=False)
 
-        print(f"[training_ltx23_lora] Готово за {stats.total_time_seconds/60:.1f} мин")
-        print(f"[training_ltx23_lora] Скорость: {stats.steps_per_second:.2f} шагов/сек")
-        print(f"[training_ltx23_lora] Пик VRAM: {stats.peak_gpu_memory_gb:.1f} GB")
-        print(f"[training_ltx23_lora] Веса сохранены: {saved_path}")
+        print(f"[LTX23TrainingLora] Готово за {stats.total_time_seconds/60:.1f} мин")
+        print(f"[LTX23TrainingLora] Скорость: {stats.steps_per_second:.2f} шагов/сек")
+        print(f"[LTX23TrainingLora] Пик VRAM: {stats.peak_gpu_memory_gb:.1f} GB")
+        print(f"[LTX23TrainingLora] Веса сохранены: {saved_path}")
 
-        return (str(Path(output_dir)),)
+        return (str(Path(output_dir)), dataset)
 
 
 NODE_CLASS_MAPPINGS = {

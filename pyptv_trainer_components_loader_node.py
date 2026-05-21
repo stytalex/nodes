@@ -128,24 +128,25 @@ class PyPTVTrainerComponentsLoader:
     def INPUT_TYPES(cls):
         return {
             "required": {
+                "dataset": ("PYPTV_DATASET",),
                 "device": (["cuda", "cpu"], {"default": "cuda"}),
             }
         }
 
-    RETURN_TYPES = ("PYPTV_MODELS",)
-    RETURN_NAMES = ("components",)
+    RETURN_TYPES = ("PYPTV_MODELS", "PYPTV_DATASET")
+    RETURN_NAMES = ("components", "dataset")
     FUNCTION = "load"
     CATEGORY = "pyPTV"
     OUTPUT_NODE = False
 
-    def load(self, device: str):
+    def load(self, dataset, device: str):
         cache_key = device
         if cache_key not in _COMPONENTS_CACHE:
             _COMPONENTS_CACHE[cache_key] = _load_all_components(device)
         else:
             print(f"[PyPTVComponentsLoader] Используем кэш")
 
-        return (_COMPONENTS_CACHE[cache_key],)
+        return (_COMPONENTS_CACHE[cache_key], dataset)
 
 
 NODE_CLASS_MAPPINGS = {
