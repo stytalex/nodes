@@ -24,7 +24,7 @@ class LTX23LoadDataset:
                     "tooltip": "HuggingFace dataset repo ID, например: avidscreator/datasets",
                 }),
                 "subfolder": ("STRING", {
-                    "default": "mylora",
+                    "default": "mydataset",
                     "multiline": False,
                     "tooltip": "Подпапка внутри репо — её содержимое скачивается в /tmp/dataset",
                 }),
@@ -36,8 +36,8 @@ class LTX23LoadDataset:
             }
         }
 
-    RETURN_TYPES = ("INT", "STRING")
-    RETURN_NAMES = ("downloaded", "status")
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("downloaded",)
     FUNCTION = "download"
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
@@ -57,11 +57,15 @@ class LTX23LoadDataset:
         if dest.exists():
             print(f"[LTX23LoadDataset] Очистка {dest} ...")
             shutil.rmtree(dest)
+            if dest.exists() and any(dest.iterdir()):
+                raise RuntimeError(f"Не удалось очистить {dest}")
         dest.mkdir(parents=True, exist_ok=True)
 
         # --- Очистка временной папки ---
         if tmp_dir.exists():
             shutil.rmtree(tmp_dir)
+            if tmp_dir.exists() and any(tmp_dir.iterdir()):
+                raise RuntimeError(f"Не удалось очистить {tmp_dir}")
         tmp_dir.mkdir(parents=True, exist_ok=True)
 
         # --- Формируем команду hf download ---
@@ -82,26 +86,24 @@ class LTX23LoadDataset:
             err = result.stderr.strip() if result.stderr else "unknown error"
             print(f"[LTX23LoadDataset] ОШИБКА:\n{err}")
             shutil.rmtree(tmp_dir, ignore_errors=True)
-            return (0, f"ERROR: {err}")
+            raise RuntimeError(f"hf download failed: {err}")
 
         # --- Переносим содержимое подпапки в dest ---
         src_folder = tmp_dir / sf
 
-        if src_folder.exists():
-            for f in src_folder.iterdir():
-                dst = dest / f.name
-                if dst.exists():
-                    shutil.rmtree(dst) if dst.is_dir() else dst.unlink()
-                shutil.move(str(f), str(dst))
-        else:
-            print(f"[LTX23LoadDataset] Предупреждение: подпапка {sf} не найдена, переношу всё")
-            for f in tmp_dir.iterdir():
-                if f.name in (".gitattributes", ".gitignore"):
-                    continue
-                dst = dest / f.name
-                if dst.exists():
-                    shutil.rmtree(dst) if dst.is_dir() else dst.unlink()
-                shutil.move(str(f), str(dst))
+        if not src_folder.exists():
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise ValueError(f"Подпапка '{sf}' не найдена в репозитории {repo_id}")
+
+        if not any(src_folder.iterdir()):
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise ValueError(f"Подпапка '{sf}' пуста в репозитории {repo_id}")
+
+        for f in src_folder.iterdir():
+            dst = dest / f.name
+            if dst.exists():
+                shutil.rmtree(dst) if dst.is_dir() else dst.unlink()
+            shutil.move(str(f), str(dst))
 
         # --- Удаляем временную папку ---
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -109,6 +111,9 @@ class LTX23LoadDataset:
         # --- Статистика ---
         file_list = sorted(p for p in dest.rglob("*") if p.is_file())
         downloaded = len(file_list)
+
+        if downloaded == 0:
+            raise RuntimeError(f"Файлы не скачались — папка датасета пуста")
 
         lines = [f"Downloaded {downloaded} files:"]
         total_bytes = 0
@@ -122,7 +127,7 @@ class LTX23LoadDataset:
         status = "\n".join(lines)
         print(f"[LTX23LoadDataset] {downloaded} files → {dest}")
 
-        return (downloaded, status)
+        return {"ui": {"status": [status]}, "result": (downloaded,)}
 
 
 NODE_CLASS_MAPPINGS = {
