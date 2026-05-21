@@ -1,7 +1,7 @@
 """
-Нода 3: Caption текст → Conditions (.pt)
-Прогоняет один caption через Gemma + embeddings processor
-и сохраняет N одинаковых .pt файлов (по количеству сэмплов в датасете).
+Нода 3: Caption → Conditions (.pt)
+Читает caption из /tmp/dataset/caption.txt, кодирует через Gemma + embeddings processor
+и сохраняет N одинаковых .pt файлов + N .txt файлов (001.txt, 002.txt ...).
 
 Формат выходного .pt:
 {
@@ -9,10 +9,6 @@
     "audio_prompt_embeds": Tensor [seq_len, 4096],
     "prompt_attention_mask": Tensor [seq_len] bool,
 }
-
-Путь идентичен _load_text_encoder_and_cache_embeddings() из trainer.py:
-    text_encoder.encode(prompt) → hidden_states, mask
-    embeddings_processor.process_hidden_states(hs, mask) → video_encoding, audio_encoding
 """
 
 from pathlib import Path
@@ -24,48 +20,20 @@ from ltx_trainer.model_loader import load_embeddings_processor, load_text_encode
 
 class LTX23EncodeCaptionConditions:
     """
-    Кодирование одного caption в conditions латенты для всего датасета.
-
-    Один и тот же caption (например триггер + описание персонажа)
-    сохраняется N раз — по одному файлу на каждый сэмпл датасета.
-
-    Входы:
-        model_path         — путь к .safetensors LTX-2 (нужен для embeddings processor)
-        text_encoder_path  — путь к папке с Gemma моделью
-        caption            — текст caption (одинаковый для всех сэмплов)
-        num_samples        — количество сэмплов (= количество картинок/аудио)
-        output_folder      — куда сохранять .pt (папка conditions/)
-        lora_trigger       — опциональный триггер-токен (prepend к caption)
-        device             — cuda / cpu
-        load_in_8bit       — загрузить Gemma в 8bit для экономии памяти
-
-    Выход:
-        processed_count — сколько файлов сохранено
-        output_folder   — путь к папке с .pt файлами
+    Кодирование caption из caption.txt в conditions латенты для всего датасета.
+    Сохраняет .pt в .precomputed/conditions/ и .txt в корень датасета.
     """
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "caption": ("STRING", {
-                    "default": "young woman with clear smooth skin ash-brown hair grey-blue eyes dark-blue suit",
-                    "multiline": True,
-                }),
                 "num_samples": ("INT", {
-                    "default": 20,
+                    "default": 25,
                     "min": 1,
                     "max": 10000,
                     "step": 1,
                 }),
-            },
-            "optional": {
-                "lora_trigger": ("STRING", {
-                    "default": "JSRv1rpd",
-                    "multiline": False,
-                }),
-                "device": (["cuda", "cpu"], {"default": "cuda"}),
-                "load_in_8bit": ("BOOLEAN", {"default": False}),
             }
         }
 
@@ -75,24 +43,26 @@ class LTX23EncodeCaptionConditions:
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
 
-    def encode(
-        self,
-        caption: str,
-        num_samples: int,
-        lora_trigger: str = "",
-        device: str = "cuda",
-        load_in_8bit: bool = False,
-    ):
+    def encode(self, num_samples: int):
+        caption_path = Path("/tmp/dataset/caption.txt")
         model_path = "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors"
         text_encoder_path = "/comfyui/models/text_encoders/gemma-3-12b-it-qat"
         output_folder = "/tmp/dataset/.precomputed/conditions"
+        device = "cuda"
+
+        # --- Читаем caption ---
+        if not caption_path.exists():
+            raise FileNotFoundError(f"caption.txt не найден: {caption_path}")
+
+        caption = caption_path.read_text(encoding="utf-8").strip()
+        if not caption:
+            raise ValueError("caption.txt пуст")
+
+        print(f"[LTX23EncodeCaptionConditions] Caption: {caption[:80]}...")
+        print(f"[LTX23EncodeCaptionConditions] Сэмплов: {num_samples}")
+
         out_path = Path(output_folder)
         out_path.mkdir(parents=True, exist_ok=True)
-
-        # Препендить триггер если задан
-        full_caption = f"{lora_trigger} {caption}".strip() if lora_trigger else caption
-        print(f"[LTX23EncodeCaptionConditions] Caption: {full_caption[:80]}...")
-        print(f"[LTX23EncodeCaptionConditions] Сэмплов: {num_samples}")
 
         # --- Загрузка Gemma ---
         print("[LTX23EncodeCaptionConditions] Загрузка Gemma text encoder...")
@@ -100,7 +70,7 @@ class LTX23EncodeCaptionConditions:
             gemma_model_path=text_encoder_path,
             device=device,
             dtype=torch.bfloat16,
-            load_in_8bit=load_in_8bit,
+            load_in_8bit=False,
         )
 
         # --- Загрузка embeddings processor ---
@@ -114,10 +84,9 @@ class LTX23EncodeCaptionConditions:
         # --- Кодируем caption ---
         print("[LTX23EncodeCaptionConditions] Кодирование caption...")
         with torch.inference_mode():
-            hidden_states, mask = text_encoder.encode(full_caption)
+            hidden_states, mask = text_encoder.encode(caption)
             out = embeddings_processor.process_hidden_states(hidden_states, mask)
 
-        # Результат — то что ожидает _training_step() тренера
         condition_data = {
             "video_prompt_embeds":  out.video_encoding.cpu(),
             "audio_prompt_embeds":  out.audio_encoding.cpu(),
@@ -127,25 +96,19 @@ class LTX23EncodeCaptionConditions:
         shape = condition_data["video_prompt_embeds"].shape
         print(f"[LTX23EncodeCaptionConditions] Embedding shape: {shape}")
 
-        # Выгрузить Gemma — она больше не нужна
+        # Выгрузить Gemma
         del text_encoder
-        if device == "cuda":
-            torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
 
-        # --- Сохраняем N одинаковых файлов ---
+        # --- Сохраняем .pt ---
         processed = 0
-        for idx in range(num_samples):
-            out_file = out_path / f"{idx:04d}.pt"
-
-            if out_file.exists():
-                print(f"[LTX23EncodeCaptionConditions] Пропуск {idx:04d}.pt (уже существует)")
-                processed += 1
-                continue
-
-            torch.save(condition_data, out_file)
+        for idx in range(1, num_samples + 1):
+            pt_file = out_path / f"{idx:03d}.pt"
+            if not pt_file.exists():
+                torch.save(condition_data, pt_file)
             processed += 1
 
-        print(f"[LTX23EncodeCaptionConditions] Готово: {processed}/{num_samples} → {output_folder}")
+        print(f"[LTX23EncodeCaptionConditions] Готово: {processed}/{num_samples}")
         return (processed,)
 
 

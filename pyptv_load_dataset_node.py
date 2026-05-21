@@ -98,10 +98,13 @@ class LTX23LoadDataset:
             shutil.rmtree(tmp_dir, ignore_errors=True)
             raise ValueError(f"Подпапка '{sf}' пуста в репозитории {repo_id}")
 
-        for f in src_folder.iterdir():
-            dst = dest / f.name
+        # Сортируем файлы по имени и переименовываем в 001.ext, 002.ext ...
+        files = sorted(p for p in src_folder.iterdir() if p.is_file())
+        for idx, f in enumerate(files, start=1):
+            ext = f.suffix.lower()
+            dst = dest / f"{idx:03d}{ext}"
             if dst.exists():
-                shutil.rmtree(dst) if dst.is_dir() else dst.unlink()
+                dst.unlink()
             shutil.move(str(f), str(dst))
 
         # --- Удаляем временную папку ---
