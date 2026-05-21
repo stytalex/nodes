@@ -27,11 +27,7 @@ app.registerExtension({
                     const files = Array.from(input.files);
                     if (!files.length) return;
 
-                    // Получаем output_folder из виджета
-                    const outputFolderWidget = node.widgets.find(w => w.name === "output_folder");
-                    const outputFolder = outputFolderWidget ? outputFolderWidget.value : "/tmp/dataset";
-
-                    await uploadFiles(node, files, outputFolder);
+                    await uploadFiles(node, files);
                 };
 
                 input.click();
@@ -73,7 +69,7 @@ app.registerExtension({
 // Загрузка файлов
 // ----------------------------------------------------------------------------
 
-async function uploadFiles(node, files, outputFolder) {
+async function uploadFiles(node, files) {
     const progressWidget = node._progressWidget;
     const uploadedFilesWidget = node._uploadedFilesWidget;
 
@@ -129,7 +125,6 @@ async function uploadFiles(node, files, outputFolder) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 filenames: uploadedNames,
-                output_folder: outputFolder,
             }),
         });
 

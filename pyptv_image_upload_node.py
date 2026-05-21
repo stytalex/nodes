@@ -32,16 +32,15 @@ async def image_batch_finalize(request):
 
     Body JSON:
     {
-        "filenames": ["file1.jpg", "file2.png", ...],
-        "output_folder": "/tmp/dataset"
+        "filenames": ["file1.jpg", "file2.png", ...]
     }
 
-    Копирует файлы из ComfyUI input/ в output_folder
+    Копирует файлы из ComfyUI input/ в /tmp/dataset
     с нумерацией 0000, 0001 ...
     """
     data = await request.json()
     filenames = data.get("filenames", [])
-    output_folder = data.get("output_folder", "/tmp/dataset")
+    output_folder = "/tmp/dataset"
 
     out_path = Path(output_folder)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -92,33 +91,27 @@ class LTX23ImageBatchUpload:
     с нумерацией 0000.jpg, 0001.jpg ...
 
     Выход:
-        file_count    — сколько файлов загружено
-        output_folder — папка с файлами
+        file_count — сколько файлов загружено
     """
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {
-                "output_folder": ("STRING", {
-                    "default": "/tmp/dataset",
-                    "multiline": False,
-                    "tooltip": "Папка датасета — картинки сохраняются как 0000.jpg, 0001.jpg ...",
-                }),
-            },
+            "required": {},
             "hidden": {
                 # Список загруженных файлов передаётся из JS виджета
                 "uploaded_files": ("STRING", {"default": "[]"}),
             },
         }
 
-    RETURN_TYPES = ("INT", "STRING")
-    RETURN_NAMES = ("file_count", "output_folder")
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("file_count",)
     FUNCTION = "process"
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
 
-    def process(self, output_folder: str, uploaded_files: str = "[]"):
+    def process(self, uploaded_files: str = "[]"):
+        output_folder = "/tmp/dataset"
         import json
 
         out_path = Path(output_folder)
