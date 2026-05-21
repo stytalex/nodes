@@ -16,7 +16,8 @@ app.registerExtension({
             // Текстовый виджет для отображения статуса
             const statusWidget = node.addWidget("text", "status", "", () => {});
             statusWidget.serialize = false;
-            statusWidget.computeSize = () => [node.size[0], 120];
+            statusWidget.inputEl = null;
+            statusWidget.computeSize = () => [node.size[0], 400];
             node._statusWidget = statusWidget;
         };
 

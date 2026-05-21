@@ -109,20 +109,21 @@ class LTX23LoadDataset:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
         # --- Статистика ---
-        file_list = sorted(p for p in dest.rglob("*") if p.is_file())
+        file_list = sorted(
+            p for p in dest.rglob("*")
+            if p.is_file() and p.name not in (".gitattributes", ".gitignore")
+        )
         downloaded = len(file_list)
 
         if downloaded == 0:
             raise RuntimeError(f"Файлы не скачались — папка датасета пуста")
 
-        lines = [f"Downloaded {downloaded} files:"]
-        total_bytes = 0
+        total_bytes = sum(f.stat().st_size for f in file_list)
+        lines = [f"{downloaded} files, {total_bytes / 1024 / 1024:.2f} MB"]
         for f in file_list:
             size = f.stat().st_size
-            total_bytes += size
             size_str = f"{size / 1024 / 1024:.2f} MB" if size > 1024 * 1024 else f"{size / 1024:.1f} KB"
-            lines.append(f"  {f.name}  ({size_str})")
-        lines.append(f"Total: {total_bytes / 1024 / 1024:.2f} MB")
+            lines.append(f"{f.name}  ({size_str})")
 
         status = "\n".join(lines)
         print(f"[LTX23LoadDataset] {downloaded} files → {dest}")
