@@ -211,8 +211,8 @@ class LTX23TrainingLora:
             }
         }
 
-    RETURN_TYPES = ("STRING", "PYPTV_DATASET")
-    RETURN_NAMES = ("output_dir", "dataset")
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("output_dir",)
     FUNCTION = "train"
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
@@ -360,7 +360,7 @@ class LTX23TrainingLora:
         print(f"[LTX23TrainingLora] Пик VRAM: {stats.peak_gpu_memory_gb:.1f} GB")
         print(f"[LTX23TrainingLora] Веса сохранены: {saved_path}")
 
-        return (str(Path(output_dir)), dataset)
+        return (str(Path(output_dir)),)
 
 
 NODE_CLASS_MAPPINGS = {
