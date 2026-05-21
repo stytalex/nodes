@@ -62,14 +62,14 @@ except Exception as e:
     print(f"[pyPTV] Failed to load pyptv_crop_node: {e}")
 
 try:
-    from .training_ltx23_lora import (
+    from .ltx23_training_lora_node import (
         NODE_CLASS_MAPPINGS       as _M7,
         NODE_DISPLAY_NAME_MAPPINGS as _D7,
     )
     NODE_CLASS_MAPPINGS.update(_M7)
     NODE_DISPLAY_NAME_MAPPINGS.update(_D7)
 except Exception as e:
-    print(f"[pyPTV] Failed to load training_ltx23_lora: {e}")
+    print(f"[pyPTV] Failed to load ltx23_training_lora_node: {e}")
 
 try:
     from .ltx23_encode_image_latents_node import (
@@ -130,6 +130,16 @@ try:
     NODE_DISPLAY_NAME_MAPPINGS.update(_D13)
 except Exception as e:
     print(f"[pyPTV] Failed to load pyptv_log_viewer_node: {e}")
+
+try:
+    from .pyptv_trainer_components_loader_node import (
+        NODE_CLASS_MAPPINGS       as _M14,
+        NODE_DISPLAY_NAME_MAPPINGS as _D14,
+    )
+    NODE_CLASS_MAPPINGS.update(_M14)
+    NODE_DISPLAY_NAME_MAPPINGS.update(_D14)
+except Exception as e:
+    print(f"[pyPTV] Failed to load pyptv_trainer_components_loader_node: {e}")
     
 WEB_DIRECTORY = "./js"
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]

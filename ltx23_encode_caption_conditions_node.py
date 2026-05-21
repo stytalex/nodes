@@ -28,6 +28,7 @@ class LTX23EncodeCaptionConditions:
     def INPUT_TYPES(cls):
         return {
             "required": {
+                "components": ("PYPTV_MODELS",),
                 "num_samples": ("INT", {
                     "default": 25,
                     "min": 1,
@@ -43,12 +44,15 @@ class LTX23EncodeCaptionConditions:
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
 
-    def encode(self, num_samples: int):
+    def encode(self, components, num_samples: int):
         caption_path = Path("/tmp/dataset/caption.txt")
-        model_path = "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors"
-        text_encoder_path = "/comfyui/models/text_encoders/gemma-3-12b-it-qat"
         output_folder = "/tmp/dataset/.precomputed/conditions"
         device = "cuda"
+
+        text_encoder = components.get("text_encoder")
+        embeddings_processor = components.get("embeddings_processor")
+        if text_encoder is None or embeddings_processor is None:
+            raise RuntimeError("Компоненты не загружены. Подключите Trainer Components Loader.")
 
         # --- Читаем caption ---
         if not caption_path.exists():
@@ -63,23 +67,6 @@ class LTX23EncodeCaptionConditions:
 
         out_path = Path(output_folder)
         out_path.mkdir(parents=True, exist_ok=True)
-
-        # --- Загрузка Gemma ---
-        print("[LTX23EncodeCaptionConditions] Загрузка Gemma text encoder...")
-        text_encoder = load_text_encoder(
-            gemma_model_path=text_encoder_path,
-            device=device,
-            dtype=torch.bfloat16,
-            load_in_8bit=False,
-        )
-
-        # --- Загрузка embeddings processor ---
-        print("[LTX23EncodeCaptionConditions] Загрузка embeddings processor...")
-        embeddings_processor = load_embeddings_processor(
-            checkpoint_path=model_path,
-            device=device,
-            dtype=torch.bfloat16,
-        )
 
         # --- Кодируем caption ---
         print("[LTX23EncodeCaptionConditions] Кодирование caption...")

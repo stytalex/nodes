@@ -72,13 +72,7 @@ class LTX23EncodeAudioLatents:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "audio_vae": ("VAE", {
-                    "tooltip": "LTX-2 Audio VAE модель. Загружается через ноду LowVRAMAudioVAELoader из ComfyUI-LTXVideo. Это специализированный аудио энкодер — не путать с видео VAE.",
-                }),
-                "device": (["cuda", "cpu"], {
-                    "default": "cuda",
-                    "tooltip": "Устройство для кодирования. cuda — быстро (GPU). cpu — медленно но работает без GPU.",
-                }),
+                "components": ("PYPTV_MODELS",),
                 "dtype": (["bfloat16", "float32"], {
                     "default": "bfloat16",
                     "tooltip": "Точность вычислений при кодировании. bfloat16 — быстрее, меньше VRAM. float32 — выше точность но медленнее и требует больше памяти.",
@@ -94,10 +88,13 @@ class LTX23EncodeAudioLatents:
 
     def encode(
         self,
-        audio_vae,
-        device: str,
+        components,
         dtype: str,
     ):
+        audio_vae = components.get("audio_vae_encoder")
+        if audio_vae is None:
+            raise RuntimeError("Audio VAE encoder не загружен. Подключите Trainer Components Loader.")
+        device = "cuda"
         audio_folder = "/tmp/dataset"
         output_folder = "/tmp/dataset/.precomputed/audio_latents"
         torch_dtype = torch.bfloat16 if dtype == "bfloat16" else torch.float32
@@ -111,13 +108,10 @@ class LTX23EncodeAudioLatents:
 
         print(f"[LTX23EncodeAudioLatents] Найдено {len(audio_files)} аудио файлов")
 
-        # AudioVAE из ComfyUI — это сам объект, не обёртка с first_stage_model
-        # LowVRAMAudioVAELoader возвращает AudioVAE напрямую как тип VAE
         audio_vae = audio_vae.to(device)
         audio_vae.eval()
 
-        # sample_rate берём из AudioVAE — там есть property
-        sample_rate = audio_vae.sample_rate
+        sample_rate = getattr(audio_vae, "sample_rate", 44100)
         print(f"[LTX23EncodeAudioLatents] AudioVAE sample_rate={sample_rate}")
 
         processed = 0

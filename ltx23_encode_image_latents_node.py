@@ -97,8 +97,7 @@ class LTX23EncodeImageLatents:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "vae": ("VAE",),
-                "device": (["cuda", "cpu"], {"default": "cuda"}),
+                "components": ("PYPTV_MODELS",),
                 "dtype": (["bfloat16", "float32"], {"default": "bfloat16"}),
             }
         }
@@ -111,10 +110,13 @@ class LTX23EncodeImageLatents:
 
     def encode(
         self,
-        vae,
-        device: str,
+        components,
         dtype: str,
     ):
+        vae_encoder = components.get("video_vae_encoder")
+        if vae_encoder is None:
+            raise RuntimeError("Video VAE encoder не загружен. Подключите Trainer Components Loader.")
+        device = "cuda"
         images_folder = "/tmp/dataset"
         output_folder = "/tmp/dataset/.precomputed/latents"
         torch_dtype = torch.bfloat16 if dtype == "bfloat16" else torch.float32
@@ -128,8 +130,6 @@ class LTX23EncodeImageLatents:
 
         print(f"[LTX23EncodeImageLatents] Найдено {len(images)} изображений")
 
-        # Достаём VideoEncoder из ComfyUI VAE объекта
-        vae_encoder = vae.first_stage_model
         vae_encoder = vae_encoder.to(device)
         vae_encoder.eval()
 

@@ -48,31 +48,11 @@ from ltx_core.model.transformer.text_projection import create_caption_projection
 from ltx_core.tools import AudioLatentTools
 from ltx_core.types import Audio, AudioLatentShape, LatentState, VideoPixelShape
 
-# ltx_trainer — для загрузки Gemma и audio VAE
-from ltx_trainer.model_loader import (
-    load_audio_vae_decoder,
-    load_audio_vae_encoder,
-    load_embeddings_processor,
-    load_text_encoder,
-    load_vocoder,
-)
-
-
 # ---------------------------------------------------------------------------
 # Пути (захардкожены — не меняются)
 # ---------------------------------------------------------------------------
-_CHECKPOINT       = "/comfyui/models/dramabox/dramabox-dit-v1.safetensors"
-_AUDIO_COMPONENTS = "/comfyui/models/dramabox/dramabox-audio-components.safetensors"
-_SILENCE_LATENT   = "/comfyui/models/dramabox/assets/silence_latent_frame.pt"
-_FULL_CHECKPOINT  = "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors"
-_GEMMA_ROOT       = "/comfyui/models/text_encoders/gemma-3-12b-it-qat"
-_PROMPTS_JSON     = "/tmp/dataset/prompts.json"
-_OUTPUT_FOLDER    = "/tmp/dataset"
-
-# ---------------------------------------------------------------------------
-# Глобальный кэш моделей
-# ---------------------------------------------------------------------------
-_loader_cache: dict = {}
+_PROMPTS_JSON  = "/tmp/dataset/prompts.json"
+_OUTPUT_FOLDER = "/tmp/dataset"
 
 
 # ---------------------------------------------------------------------------
@@ -235,72 +215,21 @@ class _AudioOnlyConfigurator(ModelConfigurator[LTXModel]):
 # Загрузчик и генератор
 # ---------------------------------------------------------------------------
 class DramaboxTTSLoader:
-    """Загружает все компоненты один раз, кэшируется глобально."""
+    """Принимает готовые компоненты из PyPTVTrainerComponentsLoader."""
 
-    def __init__(self, device: str = "cuda"):
+    def __init__(self, components: dict, device: str = "cuda"):
         self.device = torch.device(device)
         self.dtype  = torch.bfloat16
         self._patchifier = AudioPatchifier(patch_size=1)
 
-        print(f"[DramaboxTTSLoader] Загрузка моделей на {device}...")
+        self._text_encoder         = components["text_encoder"]
+        self._embeddings_processor = components["embeddings_processor"]
+        self._audio_encoder        = components["audio_vae_encoder"]
+        self._audio_decoder        = components["audio_vae_decoder"]
+        self._vocoder              = components["vocoder"]
+        self._velocity_model       = components["dit_model"]
 
-        # 1. Gemma text encoder (из _GEMMA_ROOT)
-        print("[DramaboxTTSLoader] Загрузка Gemma...")
-        self._text_encoder = load_text_encoder(
-            gemma_model_path=_GEMMA_ROOT,
-            device=self.device,
-            dtype=self.dtype,
-            load_in_8bit=False,
-        )
-
-        # 2. Embeddings processor (connectors из _FULL_CHECKPOINT)
-        print("[DramaboxTTSLoader] Загрузка embeddings processor...")
-        self._embeddings_processor = load_embeddings_processor(
-            checkpoint_path=_FULL_CHECKPOINT,
-            device=self.device,
-            dtype=self.dtype,
-        )
-
-        # 3. Audio VAE encoder (из _AUDIO_COMPONENTS)
-        print("[DramaboxTTSLoader] Загрузка Audio VAE encoder...")
-        self._audio_encoder = load_audio_vae_encoder(
-            checkpoint_path=_AUDIO_COMPONENTS,
-            device=self.device,
-            dtype=self.dtype,
-        )
-
-        # 4. Audio VAE decoder + Vocoder (из _AUDIO_COMPONENTS)
-        print("[DramaboxTTSLoader] Загрузка Audio VAE decoder...")
-        self._audio_decoder = load_audio_vae_decoder(
-            checkpoint_path=_AUDIO_COMPONENTS,
-            device=self.device,
-            dtype=self.dtype,
-        )
-        print("[DramaboxTTSLoader] Загрузка Vocoder...")
-        self._vocoder = load_vocoder(
-            checkpoint_path=_AUDIO_COMPONENTS,
-            device=self.device,
-            dtype=self.dtype,
-        )
-
-        # 5. DiT трансформер (из _CHECKPOINT)
-        print("[DramaboxTTSLoader] Загрузка DramaBox DiT transformer...")
-        with safe_open(_CHECKPOINT, framework="pt") as f:
-            config = json.loads(f.metadata()["config"])
-
-        audio_sd_ops = SDOps("AO") \
-            .with_matching(prefix="model.diffusion_model.") \
-            .with_replacement("model.diffusion_model.", "")
-
-        self._velocity_model = Builder(
-            model_path=_CHECKPOINT,
-            model_class_configurator=_AudioOnlyConfigurator,
-            model_sd_ops=audio_sd_ops,
-            registry=DummyRegistry(),
-        ).build(device=self.device, dtype=self.dtype).eval()
-
-        n_params = sum(p.numel() for p in self._velocity_model.parameters()) / 1e9
-        print(f"[DramaboxTTSLoader] ✓ DiT: {n_params:.1f}B params — все модели загружены")
+        print(f"[DramaboxTTSLoader] Компоненты получены — {device}")
 
     def _encode_prompt(self, prompts: list[str]) -> list:
         """Кодировать промпты через Gemma + embeddings processor."""
@@ -454,6 +383,7 @@ class Dramabox_pyPTV:
     def INPUT_TYPES(cls):
         return {
             "required": {
+                "components": ("PYPTV_MODELS",),
                 "cfg_scale": ("FLOAT", {
                     "default": 2.5, "min": 0.1, "max": 20.0, "step": 0.1,
                     "tooltip": "Classifier-Free Guidance. Выше = точнее следует промпту. Ниже = естественнее звучит.",
@@ -486,10 +416,6 @@ class Dramabox_pyPTV:
                     "default": "auto",
                     "tooltip": "Rescale латентов при CFG чтобы избежать клиппинга. auto = авто по cfg_scale. 0 = отключить. float 0-1 = явное значение.",
                 }),
-                "device": (["cuda", "cpu"], {
-                    "default": "cuda",
-                    "tooltip": "Устройство. cuda = GPU (рекомендуется). cpu = медленно.",
-                }),
             },
             "optional": {
                 "voice_ref": ("AUDIO", {
@@ -506,6 +432,7 @@ class Dramabox_pyPTV:
 
     def generate_batch(
         self,
+        components,
         cfg_scale:           float,
         stg_scale:           float,
         duration_multiplier: float,
@@ -514,20 +441,13 @@ class Dramabox_pyPTV:
         seed:                int,
         seed_mode:           str,
         rescale_scale:       str,
-        device:              str,
         voice_ref=None,
     ):
+        device = "cuda"
+
         # --- Проверить пути ---
-        for path, name in [
-            (_CHECKPOINT,       "dramabox-dit-v1.safetensors"),
-            (_AUDIO_COMPONENTS, "dramabox-audio-components.safetensors"),
-            (_SILENCE_LATENT,   "silence_latent_frame.pt"),
-            (_FULL_CHECKPOINT,  "ltx-2.3-22b-dev.safetensors"),
-            (_GEMMA_ROOT,       "gemma_root"),
-            (_PROMPTS_JSON,     "prompts.json"),
-        ]:
-            if not os.path.exists(path):
-                raise ValueError(f"[Dramabox_pyPTV] Не найден {name}: {path}")
+        if not os.path.exists(_PROMPTS_JSON):
+            raise ValueError(f"[Dramabox_pyPTV] Не найден {_PROMPTS_JSON}")
 
         # --- Читаем промпты ---
         with open(_PROMPTS_JSON, "r", encoding="utf-8") as f:
@@ -556,11 +476,8 @@ class Dramabox_pyPTV:
         rs_str = rescale_scale.strip().lower()
         rs = None if rs_str == "auto" else float(rs_str)
 
-        # --- Кэш загрузчика по device ---
-        if device not in _loader_cache:
-            print(f"[Dramabox_pyPTV] Первый запуск — загружаем модели...")
-            _loader_cache[device] = DramaboxTTSLoader(device=device)
-        loader = _loader_cache[device]
+        # --- Loader из components ---
+        loader = DramaboxTTSLoader(components, device=device)
 
         # --- Batch генерация ---
         pbar      = ProgressBar(len(prompts))

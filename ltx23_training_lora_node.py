@@ -29,23 +29,14 @@ from ltx_trainer.trainer import LtxvTrainer
 from ltx_trainer.training_strategies.text_to_video import TextToVideoConfig
 
 
-class training_ltx23_lora:
+class LTX23TrainingLora:
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
+                "components": ("PYPTV_MODELS",),
                 # --- Модель ---
-                "model_path": ("STRING", {
-                    "default": "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors",
-                    "multiline": False,
-                    "tooltip": "Путь к файлу модели LTX-2.3 (.safetensors). Это основная модель на которой будет обучаться LoRA.",
-                }),
-                "text_encoder_path": ("STRING", {
-                    "default": "/comfyui/models/text_encoders/gemma-3-12b-it-qat",
-                    "multiline": False,
-                    "tooltip": "Путь к ПАПКЕ с моделью Gemma (текстовый энкодер). Важно: нужна именно папка с файлами модели, не один .safetensors файл.",
-                }),
                 "load_checkpoint": ("STRING", {
                     "default": "",
                     "multiline": False,
@@ -202,8 +193,7 @@ class training_ltx23_lora:
 
     def train(
         self,
-        model_path: str,
-        text_encoder_path: str,
+        components,
         load_checkpoint: str,
         preprocessed_data_root: str,
         with_audio: bool,
@@ -235,6 +225,10 @@ class training_ltx23_lora:
         seed: int,
         first_frame_conditioning_p: float,
     ):
+        paths = components.get("paths", {})
+        model_path = paths.get("model_path", "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors")
+        text_encoder_path = paths.get("text_encoder_path", "/comfyui/models/text_encoders/gemma-3-12b-it-qat")
+
         modules = [m.strip() for m in target_modules.split(",") if m.strip()]
         quant = None if quantization == "none" else quantization
         checkpoint = load_checkpoint.strip() if load_checkpoint.strip() else None
@@ -341,9 +335,9 @@ class training_ltx23_lora:
 
 
 NODE_CLASS_MAPPINGS = {
-    "training_ltx23_lora": training_ltx23_lora,
+    "LTX23TrainingLora": LTX23TrainingLora,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "training_ltx23_lora": "LTX-2.3 Train LoRA (pyPTV)",
+    "LTX23TrainingLora": "LTX-2.3 Train LoRA (pyPTV)",
 }
