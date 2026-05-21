@@ -19,9 +19,9 @@ class LTX23LoadDataset:
         return {
             "required": {
                 "repo_id": ("STRING", {
-                    "default": "avidscreator/loras",
+                    "default": "avidscreator/datasets",
                     "multiline": False,
-                    "tooltip": "HuggingFace repo ID, например: avidscreator/loras",
+                    "tooltip": "HuggingFace dataset repo ID, например: avidscreator/datasets",
                 }),
                 "subfolder": ("STRING", {
                     "default": "mylora",
@@ -67,6 +67,7 @@ class LTX23LoadDataset:
         # --- Формируем команду hf download ---
         cmd = [
             "hf", "download", repo_id.strip(),
+            "--repo-type", "dataset",
             "--include", f"{sf}/*",
             "--local-dir", str(tmp_dir),
         ]
