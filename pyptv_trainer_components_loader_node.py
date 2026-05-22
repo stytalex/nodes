@@ -57,6 +57,47 @@ _SILENCE_LATENT    = "/comfyui/models/dramabox/assets/silence_latent_frame.pt"
 # ---------------------------------------------------------------------------
 _COMPONENTS_CACHE = {}
 
+# ---------------------------------------------------------------------------
+# GPU / CPU  offloading helpers (используются всеми нодами пайплайна)
+# ---------------------------------------------------------------------------
+_ALL_MODULE_KEYS = [
+    "video_vae_encoder",
+    "video_vae_decoder",
+    "audio_vae_encoder",
+    "audio_vae_decoder",
+    "vocoder",
+    "text_encoder",
+    "embeddings_processor",
+    "transformer",
+    "dit_model",
+]
+
+
+def load_to_gpu(components: dict, keys: list[str]) -> None:
+    """Перенести указанные компоненты на GPU."""
+    loaded = []
+    for k in keys:
+        obj = components.get(k)
+        if isinstance(obj, torch.nn.Module):
+            components[k] = obj.to("cuda")
+            loaded.append(k)
+    if loaded:
+        print(f"[offload] load_to_gpu: {', '.join(loaded)}")
+        torch.cuda.empty_cache()
+
+
+def offload_to_cpu(components: dict, keys: list[str]) -> None:
+    """Перенести указанные компоненты на CPU."""
+    offloaded = []
+    for k in keys:
+        obj = components.get(k)
+        if isinstance(obj, torch.nn.Module):
+            components[k] = obj.to("cpu")
+            offloaded.append(k)
+    if offloaded:
+        print(f"[offload] offload_to_cpu: {', '.join(offloaded)}")
+        torch.cuda.empty_cache()
+
 
 def _load_all_components(device_str: str = "cuda"):
     """Загружает все модели через ltx_trainer / ltx_core."""

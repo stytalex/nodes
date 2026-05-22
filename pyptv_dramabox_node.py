@@ -71,6 +71,7 @@ from ltx_core.model.transformer.rope import LTXRopeType
 from ltx_core.model.transformer.text_projection import create_caption_projection
 from ltx_core.tools import AudioLatentTools
 from ltx_core.types import Audio, AudioLatentShape, LatentState, VideoPixelShape
+from pyptv_trainer_components_loader_node import load_to_gpu, offload_to_cpu
 
 # ---------------------------------------------------------------------------
 # AudioConditionByReferenceLatent (из DramaBox src/audio_conditioning.py)
@@ -610,6 +611,12 @@ class Dramabox_pyPTV:
         rs_str = rescale_scale.strip().lower()
         rs = None if rs_str == "auto" else float(rs_str)
 
+        # --- GPU load ---
+        load_to_gpu(components, [
+            "text_encoder", "embeddings_processor", "dit_model",
+            "audio_vae_encoder", "audio_vae_decoder", "vocoder",
+        ])
+
         # --- Loader из components ---
         loader = DramaboxTTSLoader(components, device=device)
 
@@ -653,6 +660,11 @@ class Dramabox_pyPTV:
 
         dataset["has_audio"] = True
         print(f"[Dramabox_pyPTV] Готово: {processed}/{len(prompts)}")
+
+        offload_to_cpu(components, [
+            "text_encoder", "embeddings_processor", "dit_model",
+            "audio_vae_encoder", "audio_vae_decoder", "vocoder",
+        ])
         return (processed, dataset)
 
 

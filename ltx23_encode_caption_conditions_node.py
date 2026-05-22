@@ -31,7 +31,7 @@ from pathlib import Path
 
 import torch
 
-from ltx_trainer.model_loader import load_embeddings_processor, load_text_encoder
+from pyptv_trainer_components_loader_node import load_to_gpu, offload_to_cpu
 
 
 class LTX23EncodeCaptionConditions:
@@ -65,7 +65,6 @@ class LTX23EncodeCaptionConditions:
         root = dataset["root"]
         caption_path = Path(f"{root}/caption.txt")
         output_folder = f"{root}/.precomputed/conditions"
-        device = "cuda"
 
         text_encoder = components.get("text_encoder")
         embeddings_processor = components.get("embeddings_processor")
@@ -86,6 +85,10 @@ class LTX23EncodeCaptionConditions:
         out_path = Path(output_folder)
         out_path.mkdir(parents=True, exist_ok=True)
 
+        load_to_gpu(components, ["text_encoder", "embeddings_processor"])
+        text_encoder = components["text_encoder"]
+        embeddings_processor = components["embeddings_processor"]
+
         # --- Кодируем caption ---
         print("[LTX23EncodeCaptionConditions] Кодирование caption...")
         with torch.inference_mode():
@@ -101,10 +104,6 @@ class LTX23EncodeCaptionConditions:
         shape = condition_data["video_prompt_embeds"].shape
         print(f"[LTX23EncodeCaptionConditions] Embedding shape: {shape}")
 
-        # Выгрузить Gemma
-        del text_encoder
-        torch.cuda.empty_cache()
-
         # --- Сохраняем .pt ---
         processed = 0
         for idx in range(1, num_samples + 1):
@@ -114,6 +113,8 @@ class LTX23EncodeCaptionConditions:
             processed += 1
 
         print(f"[LTX23EncodeCaptionConditions] Готово: {processed}/{num_samples}")
+
+        offload_to_cpu(components, ["text_encoder", "embeddings_processor"])
         return (processed, dataset)
 
 

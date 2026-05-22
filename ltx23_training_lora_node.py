@@ -47,6 +47,7 @@ from ltx_trainer.config import (
 )
 from ltx_trainer.trainer import LtxvTrainer
 from ltx_trainer.training_strategies.text_to_video import TextToVideoConfig
+from pyptv_trainer_components_loader_node import offload_to_cpu, _ALL_MODULE_KEYS
 
 
 class LTX23TrainingLora:
@@ -135,11 +136,6 @@ class LTX23TrainingLora:
                 }),
 
                 # --- Чекпоинты ---
-                "output_dir": ("STRING", {
-                    "default": "/tmp/lora_output",
-                    "multiline": False,
-                    "tooltip": "Папка куда сохраняются веса LoRA.",
-                }),
                 "checkpoint_interval": ("INT", {
                     "default": 250, "min": 50, "max": 10000, "step": 50,
                     "tooltip": "Сохранять чекпоинт каждые N шагов. При keep_last_n=2 старые авто-удаляются.",
@@ -186,17 +182,20 @@ class LTX23TrainingLora:
         mixed_precision: str,
         quantization: str,
         load_text_encoder_in_8bit: bool,
-        output_dir: str,
         checkpoint_interval: int,
         keep_last_n: int,
         seed: int,
         first_frame_conditioning_p: float,
     ):
+        output_dir = "/tmp/lora_output"
         root = dataset["root"]
         preprocessed_data_root = root
         paths = components.get("paths", {})
         model_path = paths.get("model_path", "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors")
         text_encoder_path = paths.get("text_encoder_path", "/comfyui/models/text_encoders/gemma-3-12b-it-qat")
+
+        # --- Освобождаем VRAM перед тренировкой (тренер грузит свои модели) ---
+        offload_to_cpu(components, _ALL_MODULE_KEYS)
 
         modules = [m.strip() for m in target_modules.split(",") if m.strip()]
         quant = None if quantization == "none" else quantization

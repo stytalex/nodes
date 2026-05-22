@@ -31,6 +31,8 @@ from pathlib import Path
 import torch
 import torchaudio
 
+from pyptv_trainer_components_loader_node import load_to_gpu, offload_to_cpu
+
 
 SUPPORTED_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"}
 
@@ -125,7 +127,8 @@ class LTX23EncodeAudioLatents:
 
         print(f"[LTX23EncodeAudioLatents] Найдено {len(audio_files)} аудио файлов")
 
-        audio_vae = audio_vae.to(device)
+        load_to_gpu(components, ["audio_vae_encoder"])
+        audio_vae = components["audio_vae_encoder"]
         audio_vae.eval()
 
         sample_rate = getattr(audio_vae, "sample_rate", 44100)
@@ -142,30 +145,25 @@ class LTX23EncodeAudioLatents:
 
             print(f"[LTX23EncodeAudioLatents] [{idx+1}/{len(audio_files)}] {audio_path.name}")
 
-            try:
-                # Загружаем waveform [1, 1, N] и оригинальный sr
-                waveform, sr = _load_waveform(audio_path)
-                waveform = waveform.to(device=device, dtype=torch_dtype)
+            # Загружаем waveform [1, 1, N] и оригинальный sr
+            waveform, sr = _load_waveform(audio_path)
+            waveform = waveform.to(device=device, dtype=torch_dtype)
 
-                with torch.no_grad():
-                    # AudioVAE.encode() делает всё сам:
-                    # ресемплинг → mel → autoencoder → normalize
-                    # принимает waveform [B, C, N] и sample_rate
-                    latent = audio_vae.encode(waveform, sample_rate=sr)  # [B, 8, T, 16]
+            with torch.no_grad():
+                latent = audio_vae.encode(waveform, sample_rate=sr)  # [B, 8, T, 16]
 
-                latent = latent.squeeze(0).cpu()   # [8, T, 16]
+            latent = latent.squeeze(0).cpu()   # [8, T, 16]
 
-                latent_data = {"latents": latent}
-                torch.save(latent_data, out_file)
-                processed += 1
+            latent_data = {"latents": latent}
+            torch.save(latent_data, out_file)
+            processed += 1
 
-                duration = waveform.shape[-1] / sr
-                print(f"  → latent shape: {latent.shape}, duration: {duration:.2f}s")
-
-            except Exception as e:
-                print(f"[LTX23EncodeAudioLatents] ОШИБКА {audio_path.name}: {e}")
+            duration = waveform.shape[-1] / sr
+            print(f"  → latent shape: {latent.shape}, duration: {duration:.2f}s")
 
         print(f"[LTX23EncodeAudioLatents] Готово: {processed}/{len(audio_files)} → {output_folder}")
+
+        offload_to_cpu(components, ["audio_vae_encoder"])
         return (processed, dataset)
 
 

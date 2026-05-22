@@ -34,6 +34,8 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
+from pyptv_trainer_components_loader_node import load_to_gpu, offload_to_cpu
+
 
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
@@ -148,7 +150,8 @@ class LTX23EncodeImageLatents:
 
         print(f"[LTX23EncodeImageLatents] Найдено {len(images)} изображений")
 
-        vae_encoder = vae_encoder.to(device)
+        load_to_gpu(components, ["video_vae_encoder"])
+        vae_encoder = components["video_vae_encoder"]
         vae_encoder.eval()
 
         processed = 0
@@ -162,15 +165,14 @@ class LTX23EncodeImageLatents:
 
             print(f"[LTX23EncodeImageLatents] [{idx+1}/{len(images)}] {img_path.name}")
 
-            try:
-                image_tensor = _load_image_tensor(img_path)
-                latent_data  = _encode_image(image_tensor, vae_encoder, device, torch_dtype)
-                torch.save(latent_data, out_file)
-                processed += 1
-            except Exception as e:
-                print(f"[LTX23EncodeImageLatents] ОШИБКА {img_path.name}: {e}")
+            image_tensor = _load_image_tensor(img_path)
+            latent_data  = _encode_image(image_tensor, vae_encoder, device, torch_dtype)
+            torch.save(latent_data, out_file)
+            processed += 1
 
         print(f"[LTX23EncodeImageLatents] Готово: {processed}/{len(images)} → {output_folder}")
+
+        offload_to_cpu(components, ["video_vae_encoder"])
         return (processed, dataset)
 
 
