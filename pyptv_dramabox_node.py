@@ -468,6 +468,10 @@ class Dramabox_pyPTV:
             prompts = json.load(f)
         if not isinstance(prompts, list):
             raise ValueError("prompts.json должен быть JSON array строк")
+        if not prompts:
+            raise ValueError("prompts.json пуст — нет промптов для генерации аудио")
+        if not all(isinstance(p, str) and p.strip() for p in prompts):
+            raise ValueError("prompts.json должен содержать только непустые строки")
 
         print(f"[Dramabox_pyPTV] {len(prompts)} промптов, seed_mode={seed_mode}")
 
@@ -509,29 +513,31 @@ class Dramabox_pyPTV:
             current_seed = _resolve_seed(seed, idx, seed_mode)
             print(f"[Dramabox_pyPTV] [{idx+1}/{len(prompts)}] seed={current_seed} | {prompt[:60]}...")
 
-            try:
-                wav, sr = loader.generate(
-                    prompt=prompt,
-                    voice_ref_path=ref_path,
-                    cfg_scale=cfg_scale,
-                    stg_scale=stg_scale,
-                    duration_multiplier=duration_multiplier,
-                    gen_duration=gen_duration,
-                    ref_duration=ref_duration,
-                    seed=current_seed,
-                    rescale_scale=rs,
-                )
-                torchaudio.save(str(out_file), wav, sr)
-                processed += 1
-                print(f"  → {out_file.name} ({wav.shape[-1] / sr:.1f}s)")
-            except Exception as e:
-                print(f"[Dramabox_pyPTV] ОШИБКА [{idx}]: {e}")
-                import traceback; traceback.print_exc()
-
+            wav, sr = loader.generate(
+                prompt=prompt,
+                voice_ref_path=ref_path,
+                cfg_scale=cfg_scale,
+                stg_scale=stg_scale,
+                duration_multiplier=duration_multiplier,
+                gen_duration=gen_duration,
+                ref_duration=ref_duration,
+                seed=current_seed,
+                rescale_scale=rs,
+            )
+            torchaudio.save(str(out_file), wav, sr)
+            processed += 1
+            print(f"  → {out_file.name} ({wav.shape[-1] / sr:.1f}s)")
             pbar.update(1)
 
+        if processed != len(prompts):
+            raise RuntimeError(
+                f"[Dramabox_pyPTV] Генерация не завершена: {processed}/{len(prompts)}. "
+                f"Проверьте логи выше — возможна ошибка при генерации wav."
+            )
+
+        dataset["has_audio"] = True
         print(f"[Dramabox_pyPTV] Готово: {processed}/{len(prompts)}")
-        return (processed,)
+        return (processed, dataset)
 
 
 # ---------------------------------------------------------------------------
