@@ -4,33 +4,28 @@ LTX-2.3 Train LoRA
 Запускает обучение LoRA на преподготовленных латентах.
 
 Что нужно ДО запуска:
-  1. /tmp/dataset/.precomputed/latents/       — video latents ( Encode Image Latents )
-  2. /tmp/dataset/.precomputed/audio_latents/ — audio latents ( Encode Audio Latents )
-  3. /tmp/dataset/.precomputed/conditions/    — conditions     ( Encode Caption Conditions )
+  1. /tmp/dataset/.precomputed/latents/       — video latents
+  2. /tmp/dataset/.precomputed/audio_latents/ — audio latents
+  3. /tmp/dataset/.precomputed/conditions/    — caption conditions
 
 Как работает:
-  1. Берёт пути к моделям из components (PYPTV_MODELS).
-  2. Собирает LtxTrainerConfig в памяти — без yaml, без subprocess.
-  3. Создаёт LtxvTrainer и запускает обучение.
-  4. Сохраняет чекпоинты LoRA и валидационные видео.
+  • Берёт пути к моделям из components (PYPTV_MODELS).
+  • Собирает LtxTrainerConfig без yaml, без subprocess.
+  • Создаёт LtxvTrainer и запускает обучение.
+  • Сохраняет только LoRA чекпоинты. Валидация отключена, resume отключён.
 
-Основные параметры:
-  • lora_rank / lora_alpha    — размер LoRA матриц (32/32)
-  • learning_rate             — скорость обучения (1e-4)
-  • steps                     — сколько шагов обучать (2000)
-  • batch_size                — размер батча (1)
-  • mixed_precision           — bf16 / fp16 / no
-  • with_audio                — обучать аудио-ветку тоже
-  • validation_prompt         — промпт для тестовых видео
-  • validation_steps          — как часто генерировать валидацию
-  • checkpoint_interval       — как часто сохранять чекпоинты
+Чекпоинты:
+  • interval=250  — сохраняет каждые 250 шагов.
+  • keep_last_n=2 — хранит только 2 последних (старые авто-удаляются).
+  • При steps=2000 получаешь чекпоинты ~1750 и 2000.
+  • Финальная LoRA сохраняется всегда независимо от keep_last_n.
 
 Входы:
-  • components         — PYPTV_MODELS из Trainer Components Loader
-  • Все остальные — гиперпараметры обучения
+  • components — PYPTV_MODELS из Trainer Components Loader
+  • dataset    — PYPTV_DATASET из Encode Caption Conditions
 
 Выход:
-  • output_dir — папка с весами LoRA и валидациями
+  • output_dir — папка с весами LoRA
 """
 
 from pathlib import Path
@@ -62,145 +57,106 @@ class LTX23TrainingLora:
             "required": {
                 "components": ("PYPTV_MODELS",),
                 "dataset": ("PYPTV_DATASET",),
-                # --- Модель ---
-                "load_checkpoint": ("STRING", {
-                    "default": "",
-                    "multiline": False,
-                    "tooltip": "Путь к файлу .safetensors для продолжения обучения. Пример: /tmp/lora_output/lora_000250.safetensors. Оставь пустым чтобы начать заново. Можно указать папку — тренер сам найдёт последний чекпоинт.",
-                }),
 
+                # --- Модель ---
                 "with_audio": ("BOOLEAN", {
                     "default": True,
-                    "tooltip": "Обучать аудио ветку модели вместе с видео. Требует папку audio_latents/ в датасете. Если выключить — обучается только видео.",
+                    "tooltip": "Обучать аудио ветку модели вместе с видео. Требует папку audio_latents/ в датасете.",
                 }),
                 "num_dataloader_workers": ("INT", {
                     "default": 2, "min": 0, "max": 8, "step": 1,
-                    "tooltip": "Количество фоновых процессов для загрузки данных. 0 = синхронная загрузка (удобно для отладки ошибок датасета). 2-4 = быстрее для реального обучения.",
+                    "tooltip": "Количество фоновых процессов для загрузки данных. 0 = синхронная загрузка.",
                 }),
 
                 # --- LoRA ---
                 "lora_rank": ("INT", {
                     "default": 32, "min": 2, "max": 256, "step": 2,
-                    "tooltip": "Ранг LoRA матриц. Чем выше — тем больше параметров и выразительности, но больше памяти и риск переобучения. Рекомендуется: 16-64. Для персонажа достаточно 32.",
+                    "tooltip": "Ранг LoRA матриц. Рекомендуется 16–64. Для персонажа достаточно 32.",
                 }),
                 "lora_alpha": ("INT", {
                     "default": 32, "min": 1, "max": 256, "step": 1,
-                    "tooltip": "Коэффициент масштабирования LoRA. Эффективный масштаб = alpha/rank. При alpha=rank масштаб равен 1.0. Обычно ставят равным rank.",
+                    "tooltip": "Коэффициент масштабирования LoRA. Обычно ставят равным rank.",
                 }),
                 "target_modules": ("STRING", {
                     "default": "to_k,to_q,to_v,to_out.0",
                     "multiline": False,
-                    "tooltip": "Модули трансформера куда применяется LoRA. Через запятую. 'to_k,to_q,to_v,to_out.0' — покрывает все слои внимания включая аудио и кросс-модальные. Для видео-only используй 'attn1.to_k,attn1.to_q,attn1.to_v,attn1.to_out.0'.",
+                    "tooltip": "Модули трансформера куда применяется LoRA. Через запятую.",
                 }),
                 "lora_dropout": ("FLOAT", {
-                "default": 0.05, "min": 0.0, "max": 0.5, "step": 0.01,
-                "tooltip": "Dropout для слоёв LoRA. Помогает при переобучении на малых датасетах (20-25 сэмплов). 0.05 — лёгкая регуляризация. 0.0 — отключить.",
+                    "default": 0.05, "min": 0.0, "max": 0.5, "step": 0.01,
+                    "tooltip": "Dropout для слоёв LoRA. 0.05 — лёгкая регуляризация.",
                 }),
+
                 # --- Оптимизация ---
                 "learning_rate": ("FLOAT", {
                     "default": 1e-4, "min": 1e-7, "max": 1e-2,
                     "step": 1e-6, "round": False,
-                    "tooltip": "Скорость обучения. Слишком высокая — модель расходится. Слишком низкая — обучается медленно. Для LoRA рекомендуется 1e-4 до 1e-5.",
+                    "tooltip": "Скорость обучения. Для LoRA рекомендуется 1e-4 до 1e-5.",
                 }),
                 "steps": ("INT", {
                     "default": 2000, "min": 1, "max": 100000, "step": 100,
-                    "tooltip": "Количество шагов обучения. Для 20-25 сэмплов обычно достаточно 1500-2500 шагов. Больше шагов = риск переобучения.",
+                    "tooltip": "Количество шагов обучения. Для 20-25 сэмплов достаточно 1500-2500.",
                 }),
                 "batch_size": ("INT", {
                     "default": 1, "min": 1, "max": 16, "step": 1,
-                    "tooltip": "Размер батча на один GPU. При нехватке VRAM оставьте 1 и увеличьте gradient_accumulation_steps.",
+                    "tooltip": "Размер батча на один GPU.",
                 }),
                 "gradient_accumulation_steps": ("INT", {
                     "default": 1, "min": 1, "max": 64, "step": 1,
-                    "tooltip": "Накопление градиентов. Эффективный батч = batch_size × этот параметр. Позволяет имитировать большой батч при малом VRAM.",
+                    "tooltip": "Накопление градиентов. Эффективный батч = batch_size × этот параметр.",
                 }),
                 "scheduler_type": ([
                     "constant", "linear", "cosine",
                     "cosine_with_restarts", "polynomial",
                 ], {
                     "default": "linear",
-                    "tooltip": "Тип расписания learning rate. linear — плавно снижает LR до 0. cosine — снижает по косинусу. constant — не меняет LR. Рекомендуется linear.",
+                    "tooltip": "Тип расписания learning rate. linear — плавно снижает LR до 0.",
                 }),
                 "enable_gradient_checkpointing": ("BOOLEAN", {
                     "default": True,
-                    "tooltip": "Экономия VRAM за счёт скорости (~20-30% медленнее). Рекомендуется включить — позволяет обучать при меньшем VRAM.",
+                    "tooltip": "Экономия VRAM за счёт скорости (~20-30% медленнее). Рекомендуется включить.",
                 }),
 
                 # --- Ускорение ---
                 "mixed_precision": (["bf16", "fp16", "no"], {
                     "default": "bf16",
-                    "tooltip": "Точность вычислений. bf16 — рекомендуется для современных GPU (A100, H100). fp16 — для старых GPU. no — полная точность fp32, требует вдвое больше VRAM.",
+                    "tooltip": "bf16 — рекомендуется для A100/H100. no — fp32, вдвое больше VRAM.",
                 }),
                 "quantization": ([
                     "none", "int8-quanto", "int4-quanto",
                     "int2-quanto", "fp8-quanto",
                 ], {
                     "default": "none",
-                    "tooltip": "Квантизация модели для экономии VRAM. none — без квантизации (лучшее качество). int8-quanto — умеренная экономия. int4-quanto — сильная экономия но хуже качество. Несовместимо с full fine-tuning.",
+                    "tooltip": "Квантизация модели для экономии VRAM. none — лучшее качество.",
                 }),
                 "load_text_encoder_in_8bit": ("BOOLEAN", {
                     "default": False,
-                    "tooltip": "Загрузить Gemma в 8-bit для экономии VRAM (~12GB вместо ~24GB). Требует bitsandbytes. Небольшая потеря качества эмбеддингов.",
-                }),
-                "offload_optimizer_during_validation": ("BOOLEAN", {
-                    "default": False,
-                    "tooltip": "Выгружать состояние оптимизатора на CPU во время генерации валидационных видео. Помогает если не хватает VRAM для одновременного нахождения VAE + трансформер + оптимизатор на GPU. Замедляет валидацию.",
+                    "tooltip": "Загрузить Gemma в 8-bit для экономии VRAM (~12GB вместо ~24GB).",
                 }),
 
                 # --- Чекпоинты ---
                 "output_dir": ("STRING", {
                     "default": "/tmp/lora_output",
                     "multiline": False,
-                    "tooltip": "Папка куда сохраняются веса LoRA и валидационные видео.",
+                    "tooltip": "Папка куда сохраняются веса LoRA.",
                 }),
                 "checkpoint_interval": ("INT", {
-                    "default": 250, "min": 0, "max": 10000, "step": 50,
-                    "tooltip": "Сохранять чекпоинт каждые N шагов. 0 = сохранять только в конце. Полезно для восстановления после сбоя.",
+                    "default": 250, "min": 50, "max": 10000, "step": 50,
+                    "tooltip": "Сохранять чекпоинт каждые N шагов. При keep_last_n=2 старые авто-удаляются.",
                 }),
                 "keep_last_n": ("INT", {
-                    "default": 3, "min": -1, "max": 100, "step": 1,
-                    "tooltip": "Сколько последних чекпоинтов хранить. -1 = хранить все. 3 = только 3 последних (экономит место на диске).",
-                }),
-                "no_resume": ("BOOLEAN", {
-                    "default": False,
-                    "tooltip": "Начать обучение заново игнорируя сохранённое состояние оптимизатора. Веса из load_checkpoint всё равно загрузятся, но счётчик шагов и оптимизатор сбросятся.",
-                }),
-
-                # --- Валидация ---
-                "validation_prompt": ("STRING", {
-                    "default": "TRIGGER young woman with clear smooth skin, ash-brown hair, grey-blue eyes, dark-blue suit. The audio captures ambient room tone.",
-                    "multiline": True,
-                    "tooltip": "Промпт для генерации валидационного видео во время обучения. Используй тот же триггер и описание что и в датасете.",
-                }),
-                "validation_steps": ("INT", {
-                    "default": 250, "min": 0, "max": 10000, "step": 50,
-                    "tooltip": "Генерировать валидационное видео каждые N шагов. 0 = отключить валидацию (быстрее обучение).",
-                }),
-                "validation_inference_steps": ("INT", {
-                    "default": 30, "min": 10, "max": 100, "step": 5,
-                    "tooltip": "Количество шагов денойзинга при генерации валидационного видео. 30 — быстро и достаточно для мониторинга. Больше = лучше качество но медленнее.",
-                }),
-                "validation_width": ("INT", {
-                    "default": 576, "min": 32, "max": 2048, "step": 32,
-                    "tooltip": "Ширина валидационного видео в пикселях. Должна быть кратна 32. Меньше = быстрее генерация.",
-                }),
-                "validation_height": ("INT", {
-                    "default": 576, "min": 32, "max": 2048, "step": 32,
-                    "tooltip": "Высота валидационного видео в пикселях. Должна быть кратна 32.",
-                }),
-                "validation_frames": ("INT", {
-                    "default": 89, "min": 1, "max": 257, "step": 8,
-                    "tooltip": "Количество кадров валидационного видео. Должно быть frames % 8 == 1 (1, 9, 17, 25, 33, 41, 49, 57, 65, 73, 81, 89...). Нода скорректирует автоматически.",
+                    "default": 5, "min": 1, "max": 100, "step": 1,
+                    "tooltip": "Сколько последних чекпоинтов хранить. 5 = последние 5 (например 1500, 1750, 2000, 2250, 2500 при steps=2500).",
                 }),
 
                 # --- Прочее ---
                 "seed": ("INT", {
                     "default": 42, "min": 0, "max": 2**31,
-                    "tooltip": "Зерно случайности для воспроизводимости результатов обучения и валидации.",
+                    "tooltip": "Зерно случайности для воспроизводимости.",
                 }),
                 "first_frame_conditioning_p": ("FLOAT", {
                     "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05,
-                    "tooltip": "Вероятность кондиционирования на первый кадр во время обучения. 0.5 = половина батчей обучается в режиме image-to-video. Увеличь если хочешь лучший I2V режим.",
+                    "tooltip": "Вероятность кондиционирования на первый кадр. 0.5 = половина батчей в I2V режиме.",
                 }),
             }
         }
@@ -215,7 +171,6 @@ class LTX23TrainingLora:
         self,
         components,
         dataset,
-        load_checkpoint: str,
         with_audio: bool,
         num_dataloader_workers: int,
         lora_rank: int,
@@ -231,17 +186,9 @@ class LTX23TrainingLora:
         mixed_precision: str,
         quantization: str,
         load_text_encoder_in_8bit: bool,
-        offload_optimizer_during_validation: bool,
         output_dir: str,
         checkpoint_interval: int,
         keep_last_n: int,
-        no_resume: bool,
-        validation_prompt: str,
-        validation_steps: int,
-        validation_inference_steps: int,
-        validation_width: int,
-        validation_height: int,
-        validation_frames: int,
         seed: int,
         first_frame_conditioning_p: float,
     ):
@@ -253,11 +200,6 @@ class LTX23TrainingLora:
 
         modules = [m.strip() for m in target_modules.split(",") if m.strip()]
         quant = None if quantization == "none" else quantization
-        checkpoint = load_checkpoint.strip() if load_checkpoint.strip() else None
-
-        if validation_frames % 8 != 1:
-            validation_frames = (validation_frames // 8) * 8 + 1
-            print(f"[LTX23TrainingLora] validation_frames скорректировано до {validation_frames}")
 
         config = LtxTrainerConfig(
             seed=seed,
@@ -267,7 +209,7 @@ class LTX23TrainingLora:
                 model_path=model_path,
                 text_encoder_path=text_encoder_path,
                 training_mode="lora",
-                load_checkpoint=checkpoint,
+                load_checkpoint=None,          # resume отключён всегда
             ),
 
             lora=LoraConfig(
@@ -300,7 +242,7 @@ class LTX23TrainingLora:
                 mixed_precision_mode=mixed_precision,
                 quantization=quant,
                 load_text_encoder_in_8bit=load_text_encoder_in_8bit,
-                offload_optimizer_during_validation=offload_optimizer_during_validation,
+                offload_optimizer_during_validation=False,
             ),
 
             data=DataConfig(
@@ -309,19 +251,19 @@ class LTX23TrainingLora:
             ),
 
             validation=ValidationConfig(
-                prompts=[validation_prompt] if validation_prompt else [],
-                negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted",
+                prompts=[],                    # валидация отключена
+                negative_prompt="",
                 images=None,
-                video_dims=(validation_width, validation_height, validation_frames),
+                video_dims=(576, 576, 89),
                 frame_rate=25.0,
                 seed=seed,
-                inference_steps=validation_inference_steps,
-                interval=validation_steps if validation_steps > 0 else None,
+                inference_steps=30,
+                interval=None,                 # отключена
                 guidance_scale=4.0,
                 stg_scale=1.0,
                 stg_blocks=[29],
                 stg_mode="stg_av",
-                generate_audio=with_audio,
+                generate_audio=False,
                 skip_initial_validation=True,
             ),
 
@@ -330,7 +272,7 @@ class LTX23TrainingLora:
                 keep_last_n=keep_last_n,
                 precision="bfloat16",
                 save_training_state="minimal",
-                no_resume=no_resume,
+                no_resume=True,                # всегда начинаем с нуля
             ),
 
             hub=HubConfig(push_to_hub=False),
@@ -342,8 +284,8 @@ class LTX23TrainingLora:
 
         print(f"[LTX23TrainingLora] Запуск тренировки: {steps} шагов → {output_dir}")
         print(f"[LTX23TrainingLora] LoRA rank={lora_rank}, lr={learning_rate}, with_audio={with_audio}")
-        if checkpoint:
-            print(f"[LTX23TrainingLora] Продолжение с чекпоинта: {checkpoint}")
+        print(f"[LTX23TrainingLora] Чекпоинты каждые {checkpoint_interval} шагов, храним последние {keep_last_n}")
+        print(f"[LTX23TrainingLora] Валидация ОТКЛЮЧЕНА, resume ОТКЛЮЧЕН")
 
         trainer = LtxvTrainer(config)
         saved_path, stats = trainer.train(disable_progress_bars=False)
