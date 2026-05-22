@@ -117,11 +117,20 @@ class LTX23LoadDataset:
             shutil.rmtree(tmp_dir, ignore_errors=True)
             raise ValueError(f"Подпапка '{sf}' пуста в репозитории {repo_id}")
 
-        # Сортируем файлы по имени и переименовываем в 001.ext, 002.ext ...
+        # Переносим только картинки, .txt и .json
+        IMG_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+        KEEP_EXTS = {".txt", ".json"}
         files = sorted(p for p in src_folder.iterdir() if p.is_file())
-        for idx, f in enumerate(files, start=1):
+        img_idx = 0
+        for f in files:
             ext = f.suffix.lower()
-            dst = dest / f"{idx:03d}{ext}"
+            if ext in IMG_EXTS:
+                img_idx += 1
+                dst = dest / f"{img_idx:03d}{ext}"
+            elif ext in KEEP_EXTS:
+                dst = dest / f.name
+            else:
+                continue  # всё остальное пропускаем
             if dst.exists():
                 dst.unlink()
             shutil.move(str(f), str(dst))
