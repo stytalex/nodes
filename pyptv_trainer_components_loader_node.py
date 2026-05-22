@@ -4,9 +4,12 @@ Trainer Components Loader (pyPTV)
 Единая точка загрузки ВСЕХ моделей для пайплайна LTX-2.3 + DramaBox.
 
 Что делает:
-  1. Загружает .safetensors один раз в VRAM через ltx_trainer.
+  1. Загружает .safetensors один раз на CPU через ltx_trainer.
   2. Кэширует в глобальном dict — повторные запуски берут из кэша.
-  3. Отдаёт PYPTV_MODELS — dict со всеми компонентами.
+  3. Отдаёт PYPTV_MODELS — dict со всеми компонентами на CPU.
+
+Каждая нода сама переносит на GPU только то, что ей нужно,
+и выгружает обратно на CPU после работы.
 
 Что входит в PYPTV_MODELS:
   • video_vae_encoder    — кодирует картинки → video latents
@@ -99,12 +102,13 @@ def offload_to_cpu(components: dict, keys: list[str]) -> None:
         torch.cuda.empty_cache()
 
 
-def _load_all_components(device_str: str = "cuda"):
-    """Загружает все модели через ltx_trainer / ltx_core."""
-    device = device_str
+def _load_all_components():
+    """Загружает все модели на CPU через ltx_trainer / ltx_core.
+    Каждая нода сама грузит нужное на GPU через load_to_gpu()."""
+    device = "cpu"
     dtype = torch.bfloat16
 
-    print(f"[PyPTVComponentsLoader] Загрузка компонентов на {device_str}...")
+    print(f"[PyPTVComponentsLoader] Загрузка компонентов на CPU...")
 
     # --- Основная модель LTX-2.3 (transformer + VAE decoders + vocoder + text_encoder) ---
     print("[PyPTVComponentsLoader] Основная модель LTX-2.3...")
@@ -170,7 +174,6 @@ class PyPTVTrainerComponentsLoader:
         return {
             "required": {
                 "dataset": ("PYPTV_DATASET",),
-                "device": (["cuda", "cpu"], {"default": "cuda"}),
             }
         }
 
@@ -180,14 +183,13 @@ class PyPTVTrainerComponentsLoader:
     CATEGORY = "pyPTV"
     OUTPUT_NODE = False
 
-    def load(self, dataset, device: str):
-        cache_key = device
-        if cache_key not in _COMPONENTS_CACHE:
-            _COMPONENTS_CACHE[cache_key] = _load_all_components(device)
+    def load(self, dataset):
+        if "all" not in _COMPONENTS_CACHE:
+            _COMPONENTS_CACHE["all"] = _load_all_components()
         else:
             print(f"[PyPTVComponentsLoader] Используем кэш")
 
-        return (_COMPONENTS_CACHE[cache_key], dataset)
+        return (_COMPONENTS_CACHE["all"], dataset)
 
 
 NODE_CLASS_MAPPINGS = {
