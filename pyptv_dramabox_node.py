@@ -45,12 +45,20 @@ from comfy.utils import ProgressBar
 from safetensors import safe_open
 
 # ltx_core
+from dataclasses import replace
+
 from ltx_core.components.diffusion_steps import EulerDiffusionStep
 from ltx_core.components.guiders import MultiModalGuider, MultiModalGuiderParams
 from ltx_core.components.noisers import GaussianNoiser
 from ltx_core.components.patchifiers import AudioPatchifier
 from ltx_core.components.schedulers import LTX2Scheduler
 from ltx_core.conditioning.item import ConditioningItem
+from ltx_core.guidance.perturbations import (
+    BatchedPerturbationConfig,
+    Perturbation,
+    PerturbationConfig,
+    PerturbationType,
+)
 from ltx_core.loader import DummyRegistry
 from ltx_core.loader.sd_ops import SDOps
 from ltx_core.loader.single_gpu_model_builder import SingleGPUModelBuilder as Builder
@@ -164,26 +172,144 @@ def _load_waveform_for_ref(path: str, device: torch.device, max_duration: float)
         return None
 
 
-def _euler_loop(
+# ---------------------------------------------------------------------------
+# Helpers для denoising loop (только ltx_core, без ltx_pipelines)
+# ---------------------------------------------------------------------------
+def _post_process_latent(denoised: torch.Tensor, denoise_mask: torch.Tensor, clean: torch.Tensor) -> torch.Tensor:
+    """Blend denoised output with clean state based on mask."""
+    return (denoised * denoise_mask + clean.float() * (1 - denoise_mask)).to(denoised.dtype)
+
+
+def _timesteps_from_mask(denoise_mask: torch.Tensor, sigma: float | torch.Tensor) -> torch.Tensor:
+    if isinstance(sigma, torch.Tensor) and sigma.dim() == 1:
+        sigma = sigma.view(-1, *([1] * (denoise_mask.dim() - 1)))
+    return denoise_mask * sigma
+
+
+def _modality_from_state(state: LatentState, context: torch.Tensor, sigma: torch.Tensor, enabled: bool = True):
+    from ltx_core.model.transformer import Modality
+    return Modality(
+        enabled=enabled,
+        latent=state.latent,
+        sigma=sigma,
+        timesteps=_timesteps_from_mask(state.denoise_mask, sigma),
+        positions=state.positions,
+        context=context,
+        context_mask=None,
+        attention_mask=state.attention_mask,
+    )
+
+
+def _repeat_state(state: LatentState, n: int) -> LatentState:
+    def _repeat(t: torch.Tensor) -> torch.Tensor:
+        repeats = [1] * t.dim()
+        repeats[0] = n
+        return t.repeat(repeats)
+
+    return LatentState(
+        latent=_repeat(state.latent),
+        denoise_mask=_repeat(state.denoise_mask),
+        positions=_repeat(state.positions),
+        clean_latent=_repeat(state.clean_latent),
+        attention_mask=_repeat(state.attention_mask) if state.attention_mask is not None else None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Audio-only guided denoise (inline, без импорта ltx_pipelines)
+# ---------------------------------------------------------------------------
+def _audio_guided_denoise(
+    transformer: X0Model,
+    audio_state: LatentState,
+    sigma: torch.Tensor,
+    audio_context: torch.Tensor,
+    audio_guider: MultiModalGuider,
+) -> torch.Tensor:
+    """Один шаг audio-only guided denoise. Возвращает denoised latent."""
+
+    # --- Cond pass (всегда) ---
+    audio_mod = _modality_from_state(audio_state, audio_context, sigma)
+    _, cond_a = transformer(
+        video=None,
+        audio=audio_mod,
+        perturbations=BatchedPerturbationConfig.empty(audio_state.latent.shape[0]),
+    )
+
+    needs_uncond = audio_guider.do_unconditional_generation()
+    needs_ptb = audio_guider.do_perturbed_generation()
+    needs_mod = audio_guider.do_isolated_modality_generation()
+
+    if not needs_uncond and not needs_ptb and not needs_mod:
+        return _post_process_latent(cond_a, audio_state.denoise_mask, audio_state.clean_latent)
+
+    # --- Собираем passes ---
+    passes: list[tuple[str, torch.Tensor, PerturbationConfig]] = [
+        ("cond", audio_context, PerturbationConfig.empty())
+    ]
+
+    if needs_uncond:
+        neg_ctx = audio_guider.negative_context if audio_guider.negative_context is not None else audio_context
+        passes.append(("uncond", neg_ctx, PerturbationConfig.empty()))
+
+    if needs_ptb:
+        passes.append(("ptb", audio_context, PerturbationConfig([
+            Perturbation(type=PerturbationType.SKIP_AUDIO_SELF_ATTN, blocks=audio_guider.params.stg_blocks)
+        ])))
+
+    if needs_mod:
+        passes.append(("mod", audio_context, PerturbationConfig([
+            Perturbation(type=PerturbationType.SKIP_A2V_CROSS_ATTN, blocks=None),
+            Perturbation(type=PerturbationType.SKIP_V2A_CROSS_ATTN, blocks=None),
+        ])))
+
+    n = len(passes)
+    repeated_state = _repeat_state(audio_state, n)
+    contexts = torch.cat([ctx for _, ctx, _ in passes], dim=0)
+    ptb_configs = [ptb for _, _, ptb in passes]
+    batched_sigma = sigma.expand(audio_state.latent.shape[0] * n)
+
+    batched_audio = _modality_from_state(repeated_state, contexts, batched_sigma)
+    _, all_a = transformer(
+        video=None,
+        audio=batched_audio,
+        perturbations=BatchedPerturbationConfig(ptb_configs),
+    )
+
+    splits_a = list(all_a.chunk(n))
+    r = dict(zip([name for name, _, _ in passes], splits_a))
+
+    cond_a = r["cond"]
+    uncond_a = r.get("uncond", 0.0)
+    ptb_a = r.get("ptb", 0.0)
+    mod_a = r.get("mod", 0.0)
+
+    denoised = audio_guider.calculate(cond_a, uncond_a, ptb_a, mod_a)
+    return _post_process_latent(denoised, audio_state.denoise_mask, audio_state.clean_latent)
+
+
+# ---------------------------------------------------------------------------
+# Euler denoising loop для audio-only
+# ---------------------------------------------------------------------------
+def _euler_loop_audio(
     sigmas: torch.Tensor,
-    state: LatentState,
-    x0_model: X0Model,
-    denoiser,
+    audio_state: LatentState,
+    transformer: X0Model,
+    audio_context: torch.Tensor,
+    audio_guider: MultiModalGuider,
     stepper: EulerDiffusionStep,
 ) -> LatentState:
-    """Простой Euler denoising loop без ltx_pipelines."""
-    audio_state = state
-    for i in range(len(sigmas) - 1):
-        sigma     = sigmas[i]
-        sigma_next = sigmas[i + 1]
-        _, audio_state = stepper.step(
-            sigma=sigma,
-            sigma_next=sigma_next,
-            video_state=None,
-            audio_state=audio_state,
-            model=x0_model,
-            denoiser=denoiser,
+    for step_idx in range(len(sigmas) - 1):
+        sigma = sigmas[step_idx]
+        denoised_audio = _audio_guided_denoise(
+            transformer, audio_state, sigma, audio_context, audio_guider
         )
+        new_latent = stepper.step(
+            sample=audio_state.latent,
+            denoised_sample=denoised_audio,
+            sigmas=sigmas,
+            step_index=step_idx,
+        )
+        audio_state = replace(audio_state, latent=new_latent)
     return audio_state
 
 
@@ -327,7 +453,7 @@ class DramaboxTTSLoader:
         # Denoiser
         resc = _auto_rescale_for_cfg(cfg_scale) if rescale_scale is None else rescale_scale
 
-        guider = MultiModalGuider(
+        audio_guider = MultiModalGuider(
             params=MultiModalGuiderParams(
                 cfg_scale=cfg_scale,
                 stg_scale=stg_scale,
@@ -338,27 +464,17 @@ class DramaboxTTSLoader:
             negative_context=a_ctx_neg,
         )
 
-        # Простой denoiser — передаём контекст напрямую в x0_model через замыкание
-        class _SimpleDenoiser:
-            def __init__(self, a_ctx, guider):
-                self.a_ctx  = a_ctx
-                self.guider = guider
-            def __call__(self, x0_fn, video_state, audio_state, sigma):
-                return self.guider(
-                    x0_fn=x0_fn,
-                    video_state=video_state,
-                    audio_state=audio_state,
-                    sigma=sigma,
-                    video_context=None,
-                    audio_context=self.a_ctx,
-                )
-
-        denoiser = _SimpleDenoiser(a_ctx, guider)
-
-        # Sigmas + denoise loop
+        # Sigmas + denoise loop (только ltx_core)
         sigmas = LTX2Scheduler().execute(steps=30, latent=state.latent).to(self.device)
-        x0     = X0Model(self._velocity_model)
-        audio_state = _euler_loop(sigmas, state, x0, denoiser, EulerDiffusionStep())
+        x0 = X0Model(self._velocity_model)
+        audio_state = _euler_loop_audio(
+            sigmas=sigmas,
+            audio_state=state,
+            transformer=x0,
+            audio_context=a_ctx,
+            audio_guider=audio_guider,
+            stepper=EulerDiffusionStep(),
+        )
 
         # Strip ref tokens + unpatchify
         audio_state = audio_tools.clear_conditioning(audio_state)
