@@ -38,7 +38,6 @@ from ltx_trainer.model_loader import (
     load_embeddings_processor,
     load_model,
     load_text_encoder,
-    load_transformer,
     load_video_vae_encoder,
     load_video_vae_decoder,
     load_vocoder,
@@ -102,6 +101,60 @@ def offload_to_cpu(components: dict, keys: list[str]) -> None:
         torch.cuda.empty_cache()
 
 
+def _load_dramabox_dit(checkpoint_path: str, device, dtype) -> torch.nn.Module:
+    """Загружает DramaBox audio-only DiT с правильным маппингом ключей."""
+    from ltx_core.loader import DummyRegistry
+    from ltx_core.loader.sd_ops import SDOps
+    from ltx_core.loader.single_gpu_model_builder import SingleGPUModelBuilder as Builder
+    from ltx_core.model.model_protocol import ModelConfigurator
+    from ltx_core.model.transformer.attention import AttentionFunction
+    from ltx_core.model.transformer.model import LTXModel, LTXModelType
+    from ltx_core.model.transformer.rope import LTXRopeType
+    from ltx_core.model.transformer.text_projection import create_caption_projection
+
+    class _AudioOnlyConfigurator(ModelConfigurator[LTXModel]):
+        @classmethod
+        def from_config(cls, cfg: dict) -> LTXModel:
+            t = cfg.get("transformer", {})
+            cp = None
+            if not t.get("caption_proj_before_connector", False):
+                with torch.device("meta"):
+                    cp = create_caption_projection(t, audio=True)
+            return LTXModel(
+                model_type=LTXModelType.AudioOnly,
+                audio_num_attention_heads=t.get("audio_num_attention_heads", 32),
+                audio_attention_head_dim=t.get("audio_attention_head_dim", 64),
+                audio_in_channels=t.get("audio_in_channels", 128),
+                audio_out_channels=t.get("audio_out_channels", 128),
+                num_layers=t.get("num_layers", 48),
+                audio_cross_attention_dim=t.get("audio_cross_attention_dim", 2048),
+                norm_eps=t.get("norm_eps", 1e-6),
+                attention_type=AttentionFunction(t.get("attention_type", "default")),
+                positional_embedding_theta=10000.0,
+                audio_positional_embedding_max_pos=[20.0],
+                timestep_scale_multiplier=t.get("timestep_scale_multiplier", 1000),
+                use_middle_indices_grid=t.get("use_middle_indices_grid", True),
+                rope_type=LTXRopeType(t.get("rope_type", "interleaved")),
+                double_precision_rope=t.get("frequencies_precision", False) == "float64",
+                apply_gated_attention=t.get("apply_gated_attention", False),
+                audio_caption_projection=cp,
+                cross_attention_adaln=t.get("cross_attention_adaln", False),
+            )
+
+    sd_ops = (
+        SDOps("AO")
+        .with_matching(prefix="model.diffusion_model.")
+        .with_replacement("model.diffusion_model.", "")
+    )
+
+    return Builder(
+        model_path=checkpoint_path,
+        model_class_configurator=_AudioOnlyConfigurator,
+        model_sd_ops=sd_ops,
+        registry=DummyRegistry(),
+    ).build(device=device, dtype=dtype).eval()
+
+
 def _load_all_components():
     """Загружает все модели на CPU через ltx_trainer / ltx_core.
     Каждая нода сама грузит нужное на GPU через load_to_gpu()."""
@@ -136,9 +189,9 @@ def _load_all_components():
     print("[PyPTVComponentsLoader] Embeddings processor...")
     embeddings_processor = load_embeddings_processor(_MODEL_PATH, device=device, dtype=dtype)
 
-    # --- DramaBox DiT transformer ---
+    # --- DramaBox DiT transformer (audio-only, своя схема ключей) ---
     print("[PyPTVComponentsLoader] DramaBox DiT transformer...")
-    dit_model = load_transformer(_DIT_PATH, device=device, dtype=dtype)
+    dit_model = _load_dramabox_dit(_DIT_PATH, device=device, dtype=dtype)
 
     n_params = sum(p.numel() for p in dit_model.parameters()) / 1e9
     print(f"[PyPTVComponentsLoader] DiT: {n_params:.1f}B params")
