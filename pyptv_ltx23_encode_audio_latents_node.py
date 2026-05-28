@@ -31,6 +31,8 @@ from pathlib import Path
 import torch
 import torchaudio
 
+from ltx_core.model.audio_vae import encode_audio
+from ltx_core.types import Audio
 from .pyptv_ltx23_trainer_components_loader_node import load_to_gpu, offload_to_cpu
 
 
@@ -131,9 +133,6 @@ class LTX23EncodeAudioLatents:
         audio_vae = components["audio_vae_encoder"]
         audio_vae.eval()
 
-        sample_rate = getattr(audio_vae, "sample_rate", 44100)
-        print(f"[LTX23EncodeAudioLatents] AudioVAE sample_rate={sample_rate}")
-
         processed = 0
         for idx, audio_path in enumerate(audio_files):
             out_file = out_path / f"{idx:04d}.pt"
@@ -147,10 +146,9 @@ class LTX23EncodeAudioLatents:
 
             # Загружаем waveform [1, 1, N] и оригинальный sr
             waveform, sr = _load_waveform(audio_path)
-            waveform = waveform.to(device=device, dtype=torch_dtype)
 
             with torch.no_grad():
-                latent = audio_vae.encode(waveform, sample_rate=sr)  # [B, 8, T, 16]
+                latent = encode_audio(Audio(waveform=waveform, sampling_rate=sr), audio_vae)  # [B, 8, T, 16]
 
             latent = latent.squeeze(0).cpu()   # [8, T, 16]
 

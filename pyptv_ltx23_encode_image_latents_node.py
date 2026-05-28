@@ -82,7 +82,7 @@ def _encode_image(image_tensor: torch.Tensor, vae_encoder, device: str, dtype: t
     video_tensor = image_tensor.unsqueeze(2).to(device=device, dtype=dtype)
 
     with torch.no_grad():
-        latent = vae_encoder.encode(video_tensor)   # [1, 128, 1, H//32, W//32]
+        latent = vae_encoder(video_tensor)   # [1, 128, 1, H//32, W//32]
 
     latent = latent.squeeze(0).cpu()         # [128, 1, H//32, W//32]
 
