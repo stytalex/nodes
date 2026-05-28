@@ -34,7 +34,7 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
-from pyptv_trainer_components_loader_node import load_to_gpu, offload_to_cpu
+from .pyptv_ltx23_trainer_components_loader_node import load_to_gpu, offload_to_cpu
 
 
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}

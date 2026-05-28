@@ -62,54 +62,54 @@ except Exception as e:
     print(f"[pyPTV] Failed to load pyptv_crop_node: {e}")
 
 try:
-    from .ltx23_training_lora_node import (
+    from .pyptv_ltx23_training_lora_node import (
         NODE_CLASS_MAPPINGS       as _M7,
         NODE_DISPLAY_NAME_MAPPINGS as _D7,
     )
     NODE_CLASS_MAPPINGS.update(_M7)
     NODE_DISPLAY_NAME_MAPPINGS.update(_D7)
 except Exception as e:
-    print(f"[pyPTV] Failed to load ltx23_training_lora_node: {e}")
+    print(f"[pyPTV] Failed to load pyptv_ltx23_training_lora_node: {e}")
 
 try:
-    from .ltx23_encode_image_latents_node import (
+    from .pyptv_ltx23_encode_image_latents_node import (
         NODE_CLASS_MAPPINGS       as _M8,
         NODE_DISPLAY_NAME_MAPPINGS as _D8,
     )
     NODE_CLASS_MAPPINGS.update(_M8)
     NODE_DISPLAY_NAME_MAPPINGS.update(_D8)
 except Exception as e:
-    print(f"[pyPTV] Failed to load ltx23_encode_image_latents_node: {e}")
+    print(f"[pyPTV] Failed to load pyptv_ltx23_encode_image_latents_node: {e}")
 
 try:
-    from .ltx23_encode_audio_latents_node import (
+    from .pyptv_ltx23_encode_audio_latents_node import (
         NODE_CLASS_MAPPINGS       as _M9,
         NODE_DISPLAY_NAME_MAPPINGS as _D9,
     )
     NODE_CLASS_MAPPINGS.update(_M9)
     NODE_DISPLAY_NAME_MAPPINGS.update(_D9)
 except Exception as e:
-    print(f"[pyPTV] Failed to load ltx23_encode_audio_latents_node: {e}")
-    
+    print(f"[pyPTV] Failed to load pyptv_ltx23_encode_audio_latents_node: {e}")
+
 try:
-    from .ltx23_encode_caption_conditions_node import (
+    from .pyptv_ltx23_encode_caption_conditions_node import (
         NODE_CLASS_MAPPINGS       as _M10,
         NODE_DISPLAY_NAME_MAPPINGS as _D10,
     )
     NODE_CLASS_MAPPINGS.update(_M10)
     NODE_DISPLAY_NAME_MAPPINGS.update(_D10)
 except Exception as e:
-    print(f"[pyPTV] Failed to load ltx23_encode_caption_conditions_node: {e}")
+    print(f"[pyPTV] Failed to load pyptv_ltx23_encode_caption_conditions_node: {e}")
 
 try:
-    from .pyptv_dramabox_node import (
+    from .pyptv_ltx23_dramabox_node import (
         NODE_CLASS_MAPPINGS       as _M11,
         NODE_DISPLAY_NAME_MAPPINGS as _D11,
     )
     NODE_CLASS_MAPPINGS.update(_M11)
     NODE_DISPLAY_NAME_MAPPINGS.update(_D11)
 except Exception as e:
-    print(f"[pyPTV] Failed to load pyptv_dramabox_node: {e}")
+    print(f"[pyPTV] Failed to load pyptv_ltx23_dramabox_node: {e}")
     
 try:
     from .pyptv_load_dataset_node import (
@@ -132,14 +132,14 @@ except Exception as e:
     print(f"[pyPTV] Failed to load pyptv_log_viewer_node: {e}")
 
 try:
-    from .pyptv_trainer_components_loader_node import (
+    from .pyptv_ltx23_trainer_components_loader_node import (
         NODE_CLASS_MAPPINGS       as _M14,
         NODE_DISPLAY_NAME_MAPPINGS as _D14,
     )
     NODE_CLASS_MAPPINGS.update(_M14)
     NODE_DISPLAY_NAME_MAPPINGS.update(_D14)
 except Exception as e:
-    print(f"[pyPTV] Failed to load pyptv_trainer_components_loader_node: {e}")
+    print(f"[pyPTV] Failed to load pyptv_ltx23_trainer_components_loader_node: {e}")
 
 try:
     from .pyptv_upload_checkpoints_node import (

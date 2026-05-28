@@ -28,6 +28,7 @@ LTX-2.3 Train LoRA
   • output_dir — папка с весами LoRA
 """
 
+import gc
 from pathlib import Path
 
 import torch
@@ -47,7 +48,7 @@ from ltx_trainer.config import (
 )
 from ltx_trainer.trainer import LtxvTrainer
 from ltx_trainer.training_strategies.text_to_video import TextToVideoConfig
-from pyptv_trainer_components_loader_node import offload_to_cpu, _ALL_MODULE_KEYS
+from .pyptv_ltx23_trainer_components_loader_node import offload_to_cpu, _ALL_MODULE_KEYS, _COMPONENTS_CACHE
 
 
 class LTX23TrainingLora:
@@ -194,8 +195,15 @@ class LTX23TrainingLora:
         model_path = paths.get("model_path", "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors")
         text_encoder_path = paths.get("text_encoder_path", "/comfyui/models/text_encoders/gemma-3-12b-it-qat")
 
-        # --- Освобождаем VRAM перед тренировкой (тренер грузит свои модели) ---
+        # --- Полностью освобождаем RAM перед тренировкой ---
+        # Тренер грузит свои копии с диска, держать components в RAM нет смысла.
         offload_to_cpu(components, _ALL_MODULE_KEYS)
+        for k in _ALL_MODULE_KEYS:
+            components.pop(k, None)
+        _COMPONENTS_CACHE.clear()
+        gc.collect()
+        torch.cuda.empty_cache()
+        print("[LTX23TrainingLora] Кэш компонентов очищен, RAM освобождена")
 
         modules = [m.strip() for m in target_modules.split(",") if m.strip()]
         quant = None if quantization == "none" else quantization

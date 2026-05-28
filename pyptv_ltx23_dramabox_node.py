@@ -71,7 +71,7 @@ from ltx_core.model.transformer.rope import LTXRopeType
 from ltx_core.model.transformer.text_projection import create_caption_projection
 from ltx_core.tools import AudioLatentTools
 from ltx_core.types import Audio, AudioLatentShape, LatentState, VideoPixelShape
-from pyptv_trainer_components_loader_node import load_to_gpu, offload_to_cpu
+from .pyptv_ltx23_trainer_components_loader_node import load_to_gpu, offload_to_cpu
 
 # ---------------------------------------------------------------------------
 # AudioConditionByReferenceLatent (из DramaBox src/audio_conditioning.py)

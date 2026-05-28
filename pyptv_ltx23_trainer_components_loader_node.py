@@ -117,7 +117,7 @@ def _load_all_components():
         text_encoder_path=_TEXT_ENCODER_PATH,
         device=device,
         dtype=dtype,
-        with_video_vae_encoder=True,
+        with_video_vae_encoder=False,
         with_video_vae_decoder=True,
         with_audio_vae_decoder=True,
         with_vocoder=True,

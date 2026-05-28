@@ -31,7 +31,7 @@ from pathlib import Path
 import torch
 import torchaudio
 
-from pyptv_trainer_components_loader_node import load_to_gpu, offload_to_cpu
+from .pyptv_ltx23_trainer_components_loader_node import load_to_gpu, offload_to_cpu
 
 
 SUPPORTED_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"}

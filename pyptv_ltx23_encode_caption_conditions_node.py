@@ -31,7 +31,7 @@ from pathlib import Path
 
 import torch
 
-from pyptv_trainer_components_loader_node import load_to_gpu, offload_to_cpu
+from .pyptv_ltx23_trainer_components_loader_node import load_to_gpu, offload_to_cpu
 
 
 class LTX23EncodeCaptionConditions:
