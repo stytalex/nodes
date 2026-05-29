@@ -120,6 +120,11 @@ def _load_dramabox_dit(checkpoint_path: str, device, dtype) -> torch.nn.Module:
             if not t.get("caption_proj_before_connector", False):
                 with torch.device("meta"):
                     cp = create_caption_projection(t, audio=True)
+            # "default" — старое значение из DramaBox ltx_core, в новой версии → "pytorch"
+            attn_type_str = t.get("attention_type", "pytorch")
+            if attn_type_str == "default":
+                attn_type_str = "pytorch"
+
             return LTXModel(
                 model_type=LTXModelType.AudioOnly,
                 audio_num_attention_heads=t.get("audio_num_attention_heads", 32),
@@ -129,7 +134,7 @@ def _load_dramabox_dit(checkpoint_path: str, device, dtype) -> torch.nn.Module:
                 num_layers=t.get("num_layers", 48),
                 audio_cross_attention_dim=t.get("audio_cross_attention_dim", 2048),
                 norm_eps=t.get("norm_eps", 1e-6),
-                attention_type=AttentionFunction(t.get("attention_type", "default")),
+                attention_type=AttentionFunction(attn_type_str),
                 positional_embedding_theta=10000.0,
                 audio_positional_embedding_max_pos=[20.0],
                 timestep_scale_multiplier=t.get("timestep_scale_multiplier", 1000),
