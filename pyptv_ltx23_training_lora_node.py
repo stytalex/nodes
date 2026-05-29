@@ -115,8 +115,8 @@ class LTX23TrainingLora:
                     "tooltip": "Тип расписания learning rate. linear — плавно снижает LR до 0.",
                 }),
                 "enable_gradient_checkpointing": ("BOOLEAN", {
-                    "default": True,
-                    "tooltip": "Экономия VRAM за счёт скорости (~20-30% медленнее). Рекомендуется включить.",
+                    "default": False,
+                    "tooltip": "Экономия VRAM за счёт скорости (~20-30% медленнее). Несовместимо с LoRA на LTX — оставь False.",
                 }),
 
                 # --- Ускорение ---
