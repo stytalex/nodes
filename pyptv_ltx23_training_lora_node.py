@@ -314,7 +314,9 @@ class LTX23TrainingLora:
             trainable = sum(p.numel() for p in trainer._transformer.parameters() if p.requires_grad)
             print(f"[LTX23TrainingLora] После восстановления: {trainable:,}")
 
+        torch.autograd.set_detect_anomaly(True)
         saved_path, stats = trainer.train(disable_progress_bars=False)
+        torch.autograd.set_detect_anomaly(False)
 
         print(f"[LTX23TrainingLora] Готово за {stats.total_time_seconds/60:.1f} мин")
         print(f"[LTX23TrainingLora] Скорость: {stats.steps_per_second:.2f} шагов/сек")
