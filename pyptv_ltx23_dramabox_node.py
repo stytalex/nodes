@@ -581,13 +581,10 @@ class Dramabox_pyPTV:
         rescale_scale:       str,
         voice_ref=None,
     ):
-        import folder_paths
         device = "cuda"
         root = dataset["root"]
         prompts_json = f"{root}/prompts.json"
         output_folder = root
-        comfy_out = Path(folder_paths.get_output_directory()) / "dramabox_audio"
-        comfy_out.mkdir(parents=True, exist_ok=True)
 
         # --- Проверить пути ---
         if not os.path.exists(prompts_json):
@@ -661,7 +658,6 @@ class Dramabox_pyPTV:
                 rescale_scale=rs,
             )
             _sf_save(str(out_file), wav, sr)
-            _sf_save(str(comfy_out / out_file.name), wav, sr)
             processed += 1
             print(f"  → {out_file.name} ({wav.shape[-1] / sr:.1f}s)")
             pbar.update(1)

@@ -54,16 +54,19 @@ def _collect_audio_files(folder: str) -> list[Path]:
 
 def _load_waveform(path: Path) -> tuple[torch.Tensor, int]:
     """
-    Загрузить аудио файл через soundfile (не требует FFmpeg).
-    Возвращает (waveform [1, 1, N], sample_rate) — моно, оригинальный sr.
+    Загрузить аудио файл через soundfile.
+    Возвращает (waveform [1, 2, N], sample_rate) — стерео, AudioEncoder требует 2 канала.
     """
     data, sr = sf.read(str(path), dtype="float32", always_2d=True)  # [N, C]
     waveform = torch.from_numpy(data.T)  # [C, N]
 
-    if waveform.shape[0] > 1:
-        waveform = waveform.mean(dim=0, keepdim=True)  # [1, N]
+    C = waveform.shape[0]
+    if C == 1:
+        waveform = waveform.repeat(2, 1)   # моно → стерео дублированием
+    elif C > 2:
+        waveform = waveform[:2]            # берём первые 2 канала
 
-    waveform = waveform.unsqueeze(0)  # [1, 1, N]
+    waveform = waveform.unsqueeze(0)  # [2, N] → [1, 2, N]
     return waveform, sr
 
 
