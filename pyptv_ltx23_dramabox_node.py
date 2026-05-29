@@ -65,17 +65,12 @@ from ltx_core.loader.single_gpu_model_builder import SingleGPUModelBuilder as Bu
 from ltx_core.model.audio_vae import decode_audio as vae_decode_audio
 from ltx_core.model.audio_vae import encode_audio as vae_encode_audio
 from ltx_core.model.model_protocol import ModelConfigurator
-from ltx_core.model.transformer.attention import AttentionFunction
 from ltx_core.model.transformer.model import LTXModel, LTXModelType, X0Model
 from ltx_core.model.transformer.rope import LTXRopeType
 from ltx_core.model.transformer.text_projection import create_caption_projection
 from ltx_core.tools import AudioLatentTools
 from ltx_core.types import Audio, AudioLatentShape, LatentState, VideoPixelShape
 from .pyptv_ltx23_trainer_components_loader_node import load_to_gpu, offload_to_cpu
-
-def _map_attn(v: str) -> str:
-    return "pytorch" if v == "default" else v
-
 
 # ---------------------------------------------------------------------------
 # AudioConditionByReferenceLatent (из DramaBox src/audio_conditioning.py)
@@ -338,7 +333,6 @@ class _AudioOnlyConfigurator(ModelConfigurator[LTXModel]):
             num_layers                   = t.get("num_layers",                   48),
             audio_cross_attention_dim    = t.get("audio_cross_attention_dim",  2048),
             norm_eps                     = t.get("norm_eps",                    1e-6),
-            attention_type               = AttentionFunction(_map_attn(t.get("attention_type", "pytorch"))),
             positional_embedding_theta   = 10000.0,
             audio_positional_embedding_max_pos = [20.0],
             timestep_scale_multiplier    = t.get("timestep_scale_multiplier",  1000),
