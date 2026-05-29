@@ -39,6 +39,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+import soundfile as sf
 import torch
 import torchaudio
 from comfy.utils import ProgressBar
@@ -129,6 +130,16 @@ class AudioConditionByReferenceLatent(ConditioningItem):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+def _sf_save(path: str, wav: torch.Tensor, sr: int) -> None:
+    """Сохранить WAV через soundfile (не требует FFmpeg, в отличие от torchaudio 2.12+)."""
+    audio = wav.cpu().float().numpy()
+    if audio.ndim == 2 and audio.shape[0] <= 8:
+        audio = audio.T          # [C, N] → [N, C]
+    elif audio.ndim == 2:
+        audio = audio.squeeze(0) # на случай [1, N] → [N]
+    sf.write(path, audio, sr, subtype="PCM_16")
+
+
 def _auto_rescale_for_cfg(cfg: float) -> float:
     if cfg <= 2.0: return 0.0
     if cfg <= 3.0: return 0.6 * (cfg - 2.0)
@@ -601,7 +612,7 @@ class Dramabox_pyPTV:
             wf = voice_ref["waveform"]
             if wf.dim() == 3:
                 wf = wf.squeeze(0)
-            torchaudio.save(ref_wav, wf.cpu(), voice_ref["sample_rate"])
+            _sf_save(ref_wav, wf.cpu(), voice_ref["sample_rate"])
             ref_path = ref_wav
             print(f"[Dramabox_pyPTV] Voice ref: {ref_wav}")
 
@@ -645,7 +656,7 @@ class Dramabox_pyPTV:
                 seed=current_seed,
                 rescale_scale=rs,
             )
-            torchaudio.save(str(out_file), wav, sr)
+            _sf_save(str(out_file), wav, sr)
             processed += 1
             print(f"  → {out_file.name} ({wav.shape[-1] / sr:.1f}s)")
             pbar.update(1)
