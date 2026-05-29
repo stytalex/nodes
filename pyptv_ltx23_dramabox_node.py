@@ -174,7 +174,8 @@ def _resolve_seed(seed: int, idx: int, mode: str) -> int:
 def _load_waveform_for_ref(path: str, device: torch.device, max_duration: float) -> Optional[Audio]:
     """Загрузить аудио файл для voice reference."""
     try:
-        waveform, sr = torchaudio.load(path)       # [C, N]
+        data, sr = sf.read(path, dtype="float32", always_2d=True)  # [N, C]
+        waveform = torch.from_numpy(data.T)                         # [C, N]
         max_samples = int(max_duration * sr)
         waveform = waveform[..., :max_samples]
         return Audio(waveform=waveform.to(device), sampling_rate=sr)
@@ -580,10 +581,13 @@ class Dramabox_pyPTV:
         rescale_scale:       str,
         voice_ref=None,
     ):
+        import folder_paths
         device = "cuda"
         root = dataset["root"]
         prompts_json = f"{root}/prompts.json"
         output_folder = root
+        comfy_out = Path(folder_paths.get_output_directory()) / "dramabox_audio"
+        comfy_out.mkdir(parents=True, exist_ok=True)
 
         # --- Проверить пути ---
         if not os.path.exists(prompts_json):
@@ -657,6 +661,7 @@ class Dramabox_pyPTV:
                 rescale_scale=rs,
             )
             _sf_save(str(out_file), wav, sr)
+            _sf_save(str(comfy_out / out_file.name), wav, sr)
             processed += 1
             print(f"  → {out_file.name} ({wav.shape[-1] / sr:.1f}s)")
             pbar.update(1)

@@ -28,8 +28,8 @@
 
 from pathlib import Path
 
+import soundfile as sf
 import torch
-import torchaudio
 
 from ltx_core.model.audio_vae import encode_audio
 from ltx_core.types import Audio
@@ -54,19 +54,16 @@ def _collect_audio_files(folder: str) -> list[Path]:
 
 def _load_waveform(path: Path) -> tuple[torch.Tensor, int]:
     """
-    Загрузить аудио файл.
-    Возвращает (waveform [1, N], sample_rate) — моно, оригинальный sr.
-    AudioVAE.encode() сам делает ресемплинг внутри через AudioPreprocessor.
+    Загрузить аудио файл через soundfile (не требует FFmpeg).
+    Возвращает (waveform [1, 1, N], sample_rate) — моно, оригинальный sr.
     """
-    waveform, sr = torchaudio.load(str(path))  # [C, N]
+    data, sr = sf.read(str(path), dtype="float32", always_2d=True)  # [N, C]
+    waveform = torch.from_numpy(data.T)  # [C, N]
 
-    # Микшируем в моно если стерео
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)  # [1, N]
 
-    # Добавляем batch dimension: [1, N] → [1, 1, N]
-    waveform = waveform.unsqueeze(0)
-
+    waveform = waveform.unsqueeze(0)  # [1, 1, N]
     return waveform, sr
 
 
