@@ -289,6 +289,15 @@ class LTX23TrainingLora:
             wandb=WandbConfig(enabled=False),
         )
 
+        # Сбрасываем синглтон AcceleratorState — иначе повторный запуск с другими
+        # настройками mixed_precision упадёт с "has already been initialized".
+        try:
+            from accelerate.state import AcceleratorState, PartialState
+            AcceleratorState._reset_state(reset_partial_state=True)
+            PartialState._reset_state(reset_partial_state=True)
+        except Exception:
+            pass
+
         print(f"[LTX23TrainingLora] Запуск тренировки: {steps} шагов → {output_dir}")
         print(f"[LTX23TrainingLora] LoRA rank={lora_rank}, lr={learning_rate}, with_audio={with_audio}")
         print(f"[LTX23TrainingLora] Чекпоинты каждые {checkpoint_interval} шагов, храним последние {keep_last_n}")
