@@ -304,6 +304,16 @@ class LTX23TrainingLora:
         print(f"[LTX23TrainingLora] Валидация ОТКЛЮЧЕНА, resume ОТКЛЮЧЕН")
 
         trainer = LtxvTrainer(config)
+
+        # Проверяем состояние LoRA после accelerate.prepare
+        trainable = sum(p.numel() for p in trainer._transformer.parameters() if p.requires_grad)
+        print(f"[LTX23TrainingLora] Обучаемых параметров после prepare: {trainable:,}")
+        if trainable == 0:
+            print("[LTX23TrainingLora] LoRA заморожена — восстанавливаем через enable_adapter_layers()")
+            trainer._transformer.enable_adapter_layers()
+            trainable = sum(p.numel() for p in trainer._transformer.parameters() if p.requires_grad)
+            print(f"[LTX23TrainingLora] После восстановления: {trainable:,}")
+
         saved_path, stats = trainer.train(disable_progress_bars=False)
 
         print(f"[LTX23TrainingLora] Готово за {stats.total_time_seconds/60:.1f} мин")
