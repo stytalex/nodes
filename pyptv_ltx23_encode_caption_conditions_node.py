@@ -98,9 +98,9 @@ class LTX23EncodeCaptionConditions:
             out = embeddings_processor.process_hidden_states(hidden_states, mask)
 
         condition_data = {
-            "video_prompt_embeds":   out.video_encoding.cpu(),
-            "audio_prompt_embeds":   out.audio_encoding.cpu(),
-            "prompt_attention_mask": mask.cpu(),
+            "video_prompt_embeds":   out.video_encoding.squeeze(0).cpu(),    # [seq_len, 4096]
+            "audio_prompt_embeds":   out.audio_encoding.squeeze(0).cpu(),    # [seq_len, 4096]
+            "prompt_attention_mask": out.attention_mask.squeeze(0).cpu(),    # [seq_len]
         }
 
         print(f"[LTX23EncodeCaptionConditions] Embedding shape: {condition_data['video_prompt_embeds'].shape}")
