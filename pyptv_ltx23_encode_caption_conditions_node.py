@@ -9,7 +9,8 @@ Gemma text encoder + embeddings processor (ltx_trainer) и сохраняет N
   1. Читает /tmp/dataset/caption.txt — должен содержать один текст.
   2. Gemma (text_encoder из PYPTV_MODELS) кодирует текст → hidden states.
   3. Embeddings processor превращает hidden states → video + audio embeddings.
-  4. Сохраняет N файлов: /tmp/dataset/.precomputed/conditions/001.pt ... 00N.pt
+  4. Считает количество латентов в .precomputed/latents/ и создаёт столько же
+     conditions файлов: 0000.pt, 0001.pt, ... (совпадает с именами латентов).
      Все файлы одинаковые — один caption на весь датасет.
 
 Формат .pt:
@@ -20,8 +21,8 @@ Gemma text encoder + embeddings processor (ltx_trainer) и сохраняет N
   }
 
 Входы:
-  • components  — PYPTV_MODELS из Trainer Components Loader
-  • num_samples — сколько conditions сделать (default 25, = размер датасета)
+  • components — PYPTV_MODELS из Trainer Components Loader
+  • dataset    — PYPTV_DATASET из Encode Image/Audio Latents
 
 Выход:
   • processed_count — сколько .pt файлов сохранено
@@ -35,10 +36,6 @@ from .pyptv_ltx23_trainer_components_loader_node import load_to_gpu, offload_to_
 
 
 class LTX23EncodeCaptionConditions:
-    """
-    Кодирование caption из caption.txt в conditions латенты для всего датасета.
-    Сохраняет .pt в .precomputed/conditions/ и .txt в корень датасета.
-    """
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -46,12 +43,6 @@ class LTX23EncodeCaptionConditions:
             "required": {
                 "components": ("PYPTV_MODELS",),
                 "dataset": ("PYPTV_DATASET",),
-                "num_samples": ("INT", {
-                    "default": 25,
-                    "min": 1,
-                    "max": 10000,
-                    "step": 1,
-                }),
             }
         }
 
@@ -61,7 +52,7 @@ class LTX23EncodeCaptionConditions:
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
 
-    def encode(self, components, dataset, num_samples: int):
+    def encode(self, components, dataset):
         root = dataset["root"]
         caption_path = Path(f"{root}/caption.txt")
         output_folder = f"{root}/.precomputed/conditions"
@@ -71,7 +62,6 @@ class LTX23EncodeCaptionConditions:
         if text_encoder is None or embeddings_processor is None:
             raise RuntimeError("Компоненты не загружены. Подключите Trainer Components Loader.")
 
-        # --- Читаем caption ---
         if not caption_path.exists():
             raise FileNotFoundError(f"caption.txt не найден: {caption_path}")
 
@@ -79,8 +69,21 @@ class LTX23EncodeCaptionConditions:
         if not caption:
             raise ValueError("caption.txt пуст")
 
+        # Количество conditions = количество латентов (берём из любой готовой папки)
+        for latents_dir in [
+            Path(f"{root}/.precomputed/latents"),
+            Path(f"{root}/.precomputed/audio_latents"),
+        ]:
+            if latents_dir.exists():
+                num_samples = len(list(latents_dir.glob("*.pt")))
+                if num_samples > 0:
+                    print(f"[LTX23EncodeCaptionConditions] Считаем по {latents_dir.name}: {num_samples} файлов")
+                    break
+        else:
+            raise RuntimeError("Нет готовых латентов — сначала запусти Encode Image Latents или Encode Audio Latents.")
+
         print(f"[LTX23EncodeCaptionConditions] Caption: {caption[:80]}...")
-        print(f"[LTX23EncodeCaptionConditions] Сэмплов: {num_samples}")
+        print(f"[LTX23EncodeCaptionConditions] Сэмплов (по латентам): {num_samples}")
 
         out_path = Path(output_folder)
         out_path.mkdir(parents=True, exist_ok=True)
@@ -89,25 +92,22 @@ class LTX23EncodeCaptionConditions:
         text_encoder = components["text_encoder"]
         embeddings_processor = components["embeddings_processor"]
 
-        # --- Кодируем caption ---
         print("[LTX23EncodeCaptionConditions] Кодирование caption...")
         with torch.inference_mode():
             hidden_states, mask = text_encoder.encode(caption)
             out = embeddings_processor.process_hidden_states(hidden_states, mask)
 
         condition_data = {
-            "video_prompt_embeds":  out.video_encoding.cpu(),
-            "audio_prompt_embeds":  out.audio_encoding.cpu(),
+            "video_prompt_embeds":   out.video_encoding.cpu(),
+            "audio_prompt_embeds":   out.audio_encoding.cpu(),
             "prompt_attention_mask": mask.cpu(),
         }
 
-        shape = condition_data["video_prompt_embeds"].shape
-        print(f"[LTX23EncodeCaptionConditions] Embedding shape: {shape}")
+        print(f"[LTX23EncodeCaptionConditions] Embedding shape: {condition_data['video_prompt_embeds'].shape}")
 
-        # --- Сохраняем .pt ---
         processed = 0
-        for idx in range(1, num_samples + 1):
-            pt_file = out_path / f"{idx:03d}.pt"
+        for idx in range(num_samples):
+            pt_file = out_path / f"{idx:04d}.pt"
             if not pt_file.exists():
                 torch.save(condition_data, pt_file)
             processed += 1
