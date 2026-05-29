@@ -190,7 +190,7 @@ class LTX23TrainingLora:
     ):
         output_dir = "/tmp/lora_output"
         root = dataset["root"]
-        preprocessed_data_root = root
+        preprocessed_data_root = f"{root}/.precomputed"
         paths = components.get("paths", {})
         model_path = paths.get("model_path", "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors")
         text_encoder_path = paths.get("text_encoder_path", "/comfyui/models/text_encoders/gemma-3-12b-it-qat")

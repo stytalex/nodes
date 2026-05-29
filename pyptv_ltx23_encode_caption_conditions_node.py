@@ -92,16 +92,21 @@ class LTX23EncodeCaptionConditions:
         text_encoder = components["text_encoder"]
         embeddings_processor = components["embeddings_processor"]
 
+        # Сохраняем вывод feature_extractor (до коннекторов).
+        # Тренер сам применяет коннекторы в _training_step через create_embeddings.
         print("[LTX23EncodeCaptionConditions] Кодирование caption...")
         with torch.inference_mode():
-            hidden_states, mask = text_encoder.encode(caption)
-            out = embeddings_processor.process_hidden_states(hidden_states, mask)
+            hidden_states, mask = text_encoder.encode(caption, padding_side="left")
+            video_feats, audio_feats = embeddings_processor.feature_extractor(
+                hidden_states, mask, "left"
+            )
 
         condition_data = {
-            "video_prompt_embeds":   out.video_encoding.squeeze(0).cpu(),    # [seq_len, 4096]
-            "audio_prompt_embeds":   out.audio_encoding.squeeze(0).cpu(),    # [seq_len, 4096]
-            "prompt_attention_mask": out.attention_mask.squeeze(0).cpu(),    # [seq_len]
+            "video_prompt_embeds":   video_feats[0].cpu().contiguous(),   # [seq_len, feat_dim]
+            "prompt_attention_mask": mask[0].cpu().contiguous(),           # [seq_len]
         }
+        if audio_feats is not None:
+            condition_data["audio_prompt_embeds"] = audio_feats[0].cpu().contiguous()
 
         print(f"[LTX23EncodeCaptionConditions] Embedding shape: {condition_data['video_prompt_embeds'].shape}")
 
