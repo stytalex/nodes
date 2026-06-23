@@ -12,7 +12,7 @@ Upload Checkpoints to HuggingFace (pyPTV)
 
 Входы:
   • output_dir   — папка с чекпоинтами (от Train LoRA)
-  • repo_id      — репозиторий HF (default: avidscreator/loras)
+  • repo_id      — репозиторий HF (default: username/loras)
   • subfolder    — подпапка внутри репо (default: test)
   • hf_token     — HuggingFace access token
   • lora_prefix  — префикс имени файлов (default: "", например "mylora_")
@@ -35,14 +35,14 @@ class PyPTVUploadCheckpoints:
         return {
             "required": {
                 "output_dir": ("STRING", {
-                    "default": "/tmp/lora_output",
+                    "default": "/home/lora_output",
                     "multiline": False,
                     "tooltip": "Папка с чекпоинтами от тренера",
                 }),
                 "repo_id": ("STRING", {
-                    "default": "avidscreator/loras",
+                    "default": "username/loras",
                     "multiline": False,
-                    "tooltip": "HuggingFace repo ID, например: avidscreator/loras",
+                    "tooltip": "HuggingFace repo ID, например: username/loras",
                 }),
                 "subfolder": ("STRING", {
                     "default": "test",
@@ -77,7 +77,7 @@ class PyPTVUploadCheckpoints:
         lora_prefix: str,
     ):
         src = Path(output_dir)
-        tmp_dir = Path("/tmp/hf_upload")
+        tmp_dir = Path("/home/hf_upload")
         token = hf_token.strip()
         prefix = lora_prefix.strip()
         sf = subfolder.strip()

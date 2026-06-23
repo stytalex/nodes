@@ -1,14 +1,14 @@
 """
 Dataset Loader from HuggingFace
 ═══════════════════════════════════════════════════════════════════════════════
-Скачивает датасет с HuggingFace Hub в /tmp/dataset.
+Скачивает датасет с HuggingFace Hub в /home/dataset.
 
 Как работает:
-  1. Полностью очищает /tmp/dataset (включая проверку что всё удалено).
-  2. Запускает hf download repo_id --include "subfolder/*" в /tmp/hf_repo_download.
+  1. Полностью очищает /home/dataset (включая проверку что всё удалено).
+  2. Запускает hf download repo_id --include "subfolder/*" в /home/hf_repo_download.
   3. Проверяет что подпапка существует и не пуста — иначе ошибка.
   4. Переименовывает файлы в 001.ext, 002.ext ... (по алфавиту).
-  5. Перемещает их в /tmp/dataset.
+  5. Перемещает их в /home/dataset.
   6. Удаляет временную папку.
   7. Возвращает статистику: количество файлов + размер.
 
@@ -16,7 +16,7 @@ Dataset Loader from HuggingFace
   • hf_token — токен для приватных репо. Вводится руками в ноду.
 
 Входы:
-  • repo_id   — репозиторий HF (default: avidscreator/datasets)
+  • repo_id   — репозиторий HF (default: username/datasets)
   • subfolder — подпапка внутри репо (default: mydataset)
   • hf_token  — HuggingFace access token
 
@@ -31,21 +31,21 @@ from pathlib import Path
 
 
 class LTX23LoadDataset:
-    """Скачивает датасет с HuggingFace Hub в /tmp/dataset."""
+    """Скачивает датасет с HuggingFace Hub в /home/dataset."""
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "repo_id": ("STRING", {
-                    "default": "avidscreator/datasets",
+                    "default": "username/datasets",
                     "multiline": False,
-                    "tooltip": "HuggingFace dataset repo ID, например: avidscreator/datasets",
+                    "tooltip": "HuggingFace dataset repo ID, например: username/datasets",
                 }),
                 "subfolder": ("STRING", {
                     "default": "mydataset",
                     "multiline": False,
-                    "tooltip": "Подпапка внутри репо — её содержимое скачивается в /tmp/dataset",
+                    "tooltip": "Подпапка внутри репо — её содержимое скачивается в /home/dataset",
                 }),
                 "hf_token": ("STRING", {
                     "default": "",
@@ -66,8 +66,8 @@ class LTX23LoadDataset:
         subfolder: str,
         hf_token: str,
     ):
-        dest = Path("/tmp/dataset")
-        tmp_dir = Path("/tmp/hf_repo_download")
+        dest = Path("/home/dataset")
+        tmp_dir = Path("/home/hf_repo_download")
         token = hf_token.strip()
         sf = subfolder.strip()
 
