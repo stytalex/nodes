@@ -117,32 +117,55 @@ class LTX23LoadDataset:
             shutil.rmtree(tmp_dir, ignore_errors=True)
             raise ValueError(f"Подпапка '{sf}' пуста в репозитории {repo_id}")
 
-        # Переносим картинки, аудио, .txt и .json
-        # Картинки и аудио нумеруются раздельно но единообразно:
-        # сортируем каждый тип независимо → 001.jpg/001.wav, 002.jpg/002.wav, ...
-        # Порядок сортировки внутри каждого типа должен совпадать (стандартное соглашение датасета).
+        # Переносим картинки, аудио, подписи и служебные файлы.
+        #
+        # Два класса файлов:
+        #   • нумеруемые медиа — картинки персонажа и аудио-реплики.
+        #     Нумеруются раздельно но единообразно: 001.jpg/001.wav, 002.jpg/002.wav, ...
+        #     Порядок сортировки внутри каждого типа должен совпадать (стандартное соглашение).
+        #   • опорные/служебные — сохраняются по исходному имени без нумерации.
+        #     Это reference.wav (voice ref для Dramabox), prompts.json (список промптов
+        #     для Dramabox), silence_latent_frame.pt (ассет Dramabox), общий caption.txt.
+        #     Builder позже удалит служебные файлы, не нужные тренеру.
         IMG_EXTS   = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
         AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"}
-        KEEP_EXTS  = {".txt", ".json"}
+        KEEP_EXTS  = {".txt", ".json", ".pt"}
+        # Имена файлов (без расширения), которые НЕ нумеруются — опорные/служебные.
+        PROTECTED_STEMS = {"reference", "prompts", "caption", "silence_latent_frame"}
+
         files = sorted(p for p in src_folder.iterdir() if p.is_file())
 
         img_files   = [f for f in files if f.suffix.lower() in IMG_EXTS]
         audio_files = [f for f in files if f.suffix.lower() in AUDIO_EXTS]
         keep_files  = [f for f in files if f.suffix.lower() in KEEP_EXTS]
 
+        def _move_kept(f):
+            """Сохранить служебный файл по исходному имени (не нумеровать)."""
+            dst = dest / f.name
+            if dst.exists():
+                dst.unlink()
+            shutil.move(str(f), str(dst))
+
+        for f in keep_files:
+            _move_kept(f)
+
+        # Из медиа убираем опорные (reference.*) — их тоже переносим по имени.
+        for f in list(img_files) + list(audio_files):
+            if f.stem.lower() in PROTECTED_STEMS:
+                _move_kept(f)
+        img_files   = [f for f in img_files if f.stem.lower() not in PROTECTED_STEMS]
+        audio_files = [f for f in audio_files if f.stem.lower() not in PROTECTED_STEMS]
+
         for idx, f in enumerate(img_files, start=1):
             dst = dest / f"{idx:03d}{f.suffix.lower()}"
-            if dst.exists(): dst.unlink()
+            if dst.exists():
+                dst.unlink()
             shutil.move(str(f), str(dst))
 
         for idx, f in enumerate(audio_files, start=1):
             dst = dest / f"{idx:03d}{f.suffix.lower()}"
-            if dst.exists(): dst.unlink()
-            shutil.move(str(f), str(dst))
-
-        for f in keep_files:
-            dst = dest / f.name
-            if dst.exists(): dst.unlink()
+            if dst.exists():
+                dst.unlink()
             shutil.move(str(f), str(dst))
 
         # --- Удаляем временную папку ---

@@ -72,14 +72,14 @@ except Exception as e:
     print(f"[pyPTV] Failed to load pyptv_ltx23_dramabox_node: {e}")
 
 try:
-    from .pyptv_load_dataset_node import (
+    from .pyptv_ltx23_load_dataset_node import (
         NODE_CLASS_MAPPINGS       as _M12,
         NODE_DISPLAY_NAME_MAPPINGS as _D12,
     )
     NODE_CLASS_MAPPINGS.update(_M12)
     NODE_DISPLAY_NAME_MAPPINGS.update(_D12)
 except Exception as e:
-    print(f"[pyPTV] Failed to load pyptv_load_dataset_node: {e}")
+    print(f"[pyPTV] Failed to load pyptv_ltx23_load_dataset_node: {e}")
 
 try:
     from .pyptv_log_viewer_node import (
@@ -92,14 +92,14 @@ except Exception as e:
     print(f"[pyPTV] Failed to load pyptv_log_viewer_node: {e}")
 
 try:
-    from .pyptv_upload_checkpoints_node import (
+    from .pyptv_ltx23_upload_checkpoints_node import (
         NODE_CLASS_MAPPINGS       as _M15,
         NODE_DISPLAY_NAME_MAPPINGS as _D15,
     )
     NODE_CLASS_MAPPINGS.update(_M15)
     NODE_DISPLAY_NAME_MAPPINGS.update(_D15)
 except Exception as e:
-    print(f"[pyPTV] Failed to load pyptv_upload_checkpoints_node: {e}")
+    print(f"[pyPTV] Failed to load pyptv_ltx23_upload_checkpoints_node: {e}")
 
 # ─── Новые ноды LTX-2.3 LoRA training pipeline ────────────────────────────
 try:
@@ -141,6 +141,17 @@ try:
     NODE_DISPLAY_NAME_MAPPINGS.update(_D19)
 except Exception as e:
     print(f"[pyPTV] Failed to load pyptv_ltx23_train_lora_node: {e}")
+
+# ─── Отдельный поток генерации звука (DramaBox + upload audio) ────────────
+try:
+    from .pyptv_ltx23_upload_audio_node import (
+        NODE_CLASS_MAPPINGS       as _M20,
+        NODE_DISPLAY_NAME_MAPPINGS as _D20,
+    )
+    NODE_CLASS_MAPPINGS.update(_M20)
+    NODE_DISPLAY_NAME_MAPPINGS.update(_D20)
+except Exception as e:
+    print(f"[pyPTV] Failed to load pyptv_ltx23_upload_audio_node: {e}")
 
 WEB_DIRECTORY = "./js"
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
