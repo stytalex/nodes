@@ -142,17 +142,6 @@ try:
 except Exception as e:
     print(f"[pyPTV] Failed to load pyptv_ltx23_train_lora_node: {e}")
 
-# ─── Отдельный поток генерации звука (DramaBox + upload audio) ────────────
-try:
-    from .pyptv_ltx23_upload_audio_node import (
-        NODE_CLASS_MAPPINGS       as _M20,
-        NODE_DISPLAY_NAME_MAPPINGS as _D20,
-    )
-    NODE_CLASS_MAPPINGS.update(_M20)
-    NODE_DISPLAY_NAME_MAPPINGS.update(_D20)
-except Exception as e:
-    print(f"[pyPTV] Failed to load pyptv_ltx23_upload_audio_node: {e}")
-
 WEB_DIRECTORY = "./js"
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
 

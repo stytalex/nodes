@@ -1,7 +1,11 @@
 """
 DramaBox Voice Generation (pyPTV)
 ═══════════════════════════════════════════════════════════════════════════════
-Отдельный поток генерации голоса через DramaBox (ResembleAI/LTX-2.3 TTS).
+Автономный поток генерации голоса через DramaBox (ResembleAI/LTX-2.3 TTS).
+
+Полный цикл замкнут внутри ноды — никаких входных коннектов от пайплайна
+тренировки и никаких выходных сокетов. Запускаешь ноду отдельно, она делает всё
+сама, а результат (лог генерации) показывает в себе.
 
 Что делает (по ТЗ):
   1. Скачивает prompts.json + reference.wav из HF-датасета (hf download).
@@ -15,7 +19,7 @@ DramaBox запускается через subprocess — нода тонкая 
 Формат промптов — DramaBox TTS, диалоги в "двойных кавычках", ремарки снаружи.
 Пример: 'A woman speaks warmly, "Hello, how are you today?"'
 
-Входы:
+UI-параметры:
   • repo_id          — HF dataset repo, откуда брать prompts.json + reference.wav
   • subfolder        — подпапка внутри репо (или "" для корня)
   • hf_token         — токен HF (для приватных репо)
@@ -26,10 +30,8 @@ DramaBox запускается через subprocess — нода тонкая 
   • output_dir       — куда складывать сгенерированные WAV (default: /home/dramabox_out)
   • cfg_scale, stg_scale, ref_duration, seed — параметры генерации
 
-Выходы:
-  • audio_dir  — папка со сгенерированными WAV (STRING)
-  • count      — сколько файлов сгенерировано (INT)
-  • log        — лог процесса (STRING) → цеплять к Log Viewer
+Результат:
+  • лог процесса отображается в самой ноде (ui.text), выходных сокетов нет.
 """
 
 import json
@@ -153,8 +155,10 @@ class Dramabox_pyPTV:
             }
         }
 
-    RETURN_TYPES = ("STRING", "INT", "STRING")
-    RETURN_NAMES = ("audio_dir", "count", "log")
+    # Автономная нода: полный цикл (скачать → сгенерить → залить) замкнут внутри неё.
+    # Нет выходных сокетов и нет входных коннектов от пайплайна — только UI-параметры.
+    # Результат (сгенерировано/залито/лог) показывается в самой ноде через ui.
+    RETURN_TYPES = ()
     FUNCTION = "generate"
     CATEGORY = "pyPTV"
     OUTPUT_NODE = True
@@ -302,13 +306,14 @@ class Dramabox_pyPTV:
 
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-        # ── лог для возврата ──
+        # ── лог для возврата в UI ──
         log_text = ""
         if log_file and os.path.isfile(log_file):
             with open(log_file, "r", encoding="utf-8") as f:
                 log_text = f.read()
 
-        return (str(out_dir), generated, log_text)
+        summary = f"Сгенерировано и залито: {generated} WAV → {repo_id.strip()}/{sf or '(root)'}"
+        return {"ui": {"text": [log_text], "summary": [summary]}, "result": ()}
 
 
 # ---------------------------------------------------------------------------
