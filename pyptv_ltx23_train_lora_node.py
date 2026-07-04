@@ -1,37 +1,38 @@
 """
-LTX-2.3 Train LoRA (pyPTV)
+LTX-2.3 Train LoRA — единая замкнутая нода (pyPTV)
 ═══════════════════════════════════════════════════════════════════════════════
-Генерирует /home/ltx_train_config.yaml из UI-параметров и запускает
-scripts/train.py через subprocess.Popen — НЕ блокирует ComfyUI.
-За прогрессом смотрите через PyPTVLogViewer на log_file.
+Объединяет весь пайплайн обучения LoRA в ОДНУ автономную ноду:
+  1. Загрузка датасета с HF (load_dataset)
+  2. Построение dataset.json + выбор buckets (dataset_builder)
+  3. Препроцессинг latents (preprocess → process_dataset.py)
+  4. Запуск тренировки (train.py)
+  5. Заливка чекпоинтов на HF (upload_checkpoints)
 
-Все ключевые параметры обучения вынесены в UI:
-  • LoRA:       rank, alpha, dropout
-  • Optimizer:  learning_rate, steps, batch_size, grad_accum, optimizer, scheduler
-  • Validation: prompt, interval, dims (W×H×frames), inference_steps, guidance,
-                generate_video/audio
-  • Checkpoints: interval, keep_last_n
+Нода ЗАМКНУТА: нет входных коннектов и нет выходных сокетов.
+Запускаешь — она делает весь цикл сама, прогресс пишет в лог-файл и показывает
+его в себе. Разделять на 5 нод смысла нет — данные ходят последовательно.
 
-Выход output_dir можно цеплять в PyPTVUploadCheckpoints.
+Тренер запускается через subprocess (subprocess.Popen, не блокируя ComfyUI):
+чистый AcceleratorState каждый запуск, никаких конфликтов с памятью ComfyUI,
+тренер работает ровно как Lightricks задумали.
+
+Модели НЕ скачиваются нодой — только пути (ставятся отдельно на RunPod).
 """
 
 import os
-import datetime
 import subprocess
 
+from . import pyptv_ltx23_common as cm
 
 TAG = "Trainer"
 CONFIG_PATH = "/home/ltx_train_config.yaml"
+DATASET_DIR = "/home/dataset"
+DOWNLOAD_TMP = "/home/hf_repo_download"
 
-
-# ── target_modules для character LoRA с голосом ──────────────────────────
-# Включаются опционально через флаги в UI:
-#   enable_ff_video  → ff.net.0.proj, ff.net.2          (ёмкость для видео)
-#   enable_ff_audio  → audio_ff.net.0.proj, audio_ff.net.2  (аудио feed-forward)
+# target_modules для character LoRA с голосом
 BASE_MODULES = ["to_k", "to_q", "to_v", "to_out.0"]
 FF_VIDEO     = ["ff.net.0.proj", "ff.net.2"]
 FF_AUDIO     = ["audio_ff.net.0.proj", "audio_ff.net.2"]
-
 
 CONFIG_TEMPLATE = """\
 seed: {seed}
@@ -100,60 +101,65 @@ checkpoints:
 """
 
 
-def _log(log_path: str, msg: str):
-    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"[{ts}] [{TAG}] {msg}\n"
-    os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
-    with open(log_path, "a", encoding="utf-8") as f:
-        f.write(line)
-    print(line, end="")
-
-
-def _reset_log(log_path: str):
-    os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
-    open(log_path, "w").close()
-
-
-def _py_bool(b: bool) -> str:
-    """Python bool → YAML bool ('true'/'false')"""
+def _py_bool(b):
     return "true" if b else "false"
 
 
-def _yaml_escape(s: str) -> str:
-    """Экранирование строки для YAML (защита от " внутри prompt)"""
+def _yaml_escape(s):
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _format_modules(modules: list) -> str:
-    """Список модулей → отступ YAML"""
+def _format_modules(modules):
     return "\n".join(f'    - "{m}"' for m in modules)
 
 
 class PyPTVLtx23TrainLora:
+    """Единая замкнутая нода: загрузка → датасет → препроцесс → тренировка → аплоад."""
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                # ── пути ──
-                "preprocessed_data_root": ("STRING", {
-                    "default": "/home/dataset/.precomputed",
+                # ── Датасет (загрузка с HF) ──
+                "dataset_repo_id": ("STRING", {
+                    "default": "username/datasets",
                     "multiline": False,
+                    "tooltip": "HF dataset repo, откуда качать датасет",
                 }),
+                "dataset_subfolder": ("STRING", {
+                    "default": "mydataset",
+                    "multiline": False,
+                    "tooltip": "Подпапка внутри репо с картинками/аудио",
+                }),
+                "hf_token": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "HuggingFace access token",
+                }),
+                "trigger_word": ("STRING", {
+                    "default": "JSRv1rpd",
+                    "multiline": False,
+                    "tooltip": "Триггер-слово LoRA (prepended автоматически через --lora-trigger)",
+                }),
+
+                # ── Модели / пути ──
                 "model_path": ("STRING", {
-                    "default": "/models/ltx-2.3-22b-dev.safetensors",
+                    "default": "/comfyui/models/checkpoints/ltx-2.3-22b-dev.safetensors",
                     "multiline": False,
                 }),
                 "text_encoder_path": ("STRING", {
-                    "default": "/models/gemma-3-12b-it-qat-q4_0-unquantized",
-                    "multiline": False,
-                }),
-                "output_dir": ("STRING", {
-                    "default": "/home/lora_output",
+                    "default": "/comfyui/models/text_encoders/gemma-3-12b-it-qat",
                     "multiline": False,
                 }),
                 "ltx_repo_path": ("STRING", {
                     "default": "/home/LTX-2",
                     "multiline": False,
+                    "tooltip": "Корень репозитория LTX-2",
+                }),
+                "output_dir": ("STRING", {
+                    "default": "/home/lora_output",
+                    "multiline": False,
+                    "tooltip": "Папка для результатов обучения",
                 }),
                 "log_file": ("STRING", {
                     "default": "/home/ltx_train.log",
@@ -164,18 +170,18 @@ class PyPTVLtx23TrainLora:
                 # ── LoRA ──
                 "lora_rank": ("INT", {
                     "default": 64, "min": 1, "max": 256,
-                    "tooltip": "Ранг LoRA матриц. Больше = больше ёмкость + VRAM",
+                    "tooltip": "Ранг LoRA. Больше = больше ёмкость + VRAM",
                 }),
                 "lora_alpha": ("INT", {
                     "default": 64, "min": 1, "max": 256,
-                    "tooltip": "Scaling factor. Обычно равен rank",
+                    "tooltip": "Scaling factor, обычно равен rank",
                 }),
                 "lora_dropout": ("FLOAT", {
                     "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01,
                 }),
                 "enable_ff_video": ("BOOLEAN", {
                     "default": True,
-                    "tooltip": "Добавить ff.net.0.proj/ff.net.2 — ёмкость для видео",
+                    "tooltip": "Добавить ff.net.* — ёмкость для видео",
                 }),
                 "enable_ff_audio": ("BOOLEAN", {
                     "default": True,
@@ -241,18 +247,41 @@ class PyPTVLtx23TrainLora:
                 # ── Checkpoints ──
                 "checkpoint_interval": ("INT", {"default": 250, "min": 1, "max": 100000}),
                 "keep_last_n": ("INT", {"default": 3, "min": 1, "max": 100}),
+
+                # ── Upload ──
+                "upload_repo_id": ("STRING", {
+                    "default": "avidscreator/loras",
+                    "multiline": False,
+                    "tooltip": "HF repo куда заливать чекпоинты",
+                }),
+                "upload_subfolder": ("STRING", {
+                    "default": "test",
+                    "multiline": False,
+                    "tooltip": "Подпапка для чекпоинтов",
+                }),
+                "lora_prefix": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "Префикс имени файлов, например: mylora_",
+                }),
+                "upload_after": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Залить чекпоинты на HF после тренировки",
+                }),
             }
         }
 
-    RETURN_TYPES = ("STRING", "STRING", "INT")
-    RETURN_NAMES = ("output_dir", "log_file", "process_pid")
+    # Замкнутая нода: нет входных коннектов и нет выходных сокетов.
+    RETURN_TYPES = ()
     FUNCTION = "run"
     CATEGORY = "pyPTV"
+    OUTPUT_NODE = True
 
     def run(self,
-            # пути
-            preprocessed_data_root, model_path, text_encoder_path, output_dir,
-            ltx_repo_path, log_file, seed,
+            # dataset
+            dataset_repo_id, dataset_subfolder, hf_token, trigger_word,
+            # paths / models
+            model_path, text_encoder_path, ltx_repo_path, output_dir, log_file, seed,
             # lora
             lora_rank, lora_alpha, lora_dropout, enable_ff_video, enable_ff_audio,
             # optimization
@@ -266,72 +295,94 @@ class PyPTVLtx23TrainLora:
             validation_seed, validation_inference_steps, validation_guidance,
             validation_stg_scale, generate_video, generate_audio,
             # checkpoints
-            checkpoint_interval, keep_last_n):
+            checkpoint_interval, keep_last_n,
+            # upload
+            upload_repo_id, upload_subfolder, lora_prefix, upload_after):
 
-        _reset_log(log_file)
+        cm.reset_log(log_file)
+        log = lambda m: cm.log(log_file, TAG, m)
 
-        # ── валидация ──
+        # ── валидации входов ──
         trainer_cwd = os.path.join(ltx_repo_path, "packages", "ltx-trainer")
         if not os.path.isdir(trainer_cwd):
             raise RuntimeError(f"Не найден ltx-trainer: {trainer_cwd}")
-        if not os.path.isdir(preprocessed_data_root):
-            raise RuntimeError(f"Нет preprocessed_data_root: {preprocessed_data_root}")
+        cm.validate_resolution(validation_width, validation_height)
+        cm.validate_frames(validation_frames)
 
-        # LTX-2.3 ограничения
-        if validation_width % 32 != 0 or validation_height % 32 != 0:
+        # === ШАГ 1: загрузка датасета с HF ===
+        log("=" * 60)
+        log("ШАГ 1/5: загрузка датасета с HuggingFace")
+        cm.hf_download_dataset(
+            dataset_repo_id, dataset_subfolder, hf_token,
+            DATASET_DIR, DOWNLOAD_TMP, log_file, TAG,
+        )
+
+        # === ШАГ 2: построение dataset.json + buckets ===
+        log("=" * 60)
+        log("ШАГ 2/5: построение dataset.json")
+        dataset_json, buckets_str, count, _ = cm.build_dataset(
+            DATASET_DIR, trigger_word, log_file, TAG,
+        )
+        log(f"Датасет: {count} пар, buckets={buckets_str}")
+
+        # === ШАГ 3: препроцессинг latents ===
+        log("=" * 60)
+        log("ШАГ 3/5: препроцессинг (process_dataset.py)")
+        preprocessed_root = os.path.join(DATASET_DIR, ".precomputed")
+        preprocess_cmd = [
+            "python", "scripts/process_dataset.py",
+            dataset_json,
+            "--resolution-buckets", buckets_str,
+            "--model-path", model_path,
+            "--text-encoder-path", text_encoder_path,
+            "--lora-trigger", trigger_word,
+            "--overwrite",
+        ]
+        result = cm.run_logged(
+            preprocess_cmd, trainer_cwd, log_file,
+            "stdout/stderr process_dataset.py", TAG,
+        )
+        if result.returncode != 0:
+            log(f"process_dataset.py упал, returncode={result.returncode}")
             raise RuntimeError(
-                f"validation_width/height должны быть кратны 32 "
-                f"(получено {validation_width}x{validation_height})"
+                f"Preprocess failed: returncode={result.returncode}, см. {log_file}"
             )
-        if validation_frames != 1 and validation_frames % 8 != 1:
-            raise RuntimeError(
-                f"validation_frames должно быть 1 (картинка) или frames%8==1 "
-                f"(9, 17, 25, 33...). Получено: {validation_frames}"
-            )
+        latents_dir = os.path.join(preprocessed_root, "latents")
+        n = len(os.listdir(latents_dir)) if os.path.isdir(latents_dir) else 0
+        log(f"Препроцессинг завершён. Латентов: {n}")
+
+        # === ШАГ 4: генерация config.yaml + запуск train.py ===
+        log("=" * 60)
+        log("ШАГ 4/5: запуск тренировки")
         if lora_alpha != lora_rank:
-            _log(log_file, f"WARN: lora_alpha ({lora_alpha}) != lora_rank ({lora_rank})")
-
+            log(f"WARN: lora_alpha ({lora_alpha}) != lora_rank ({lora_rank})")
         os.makedirs(output_dir, exist_ok=True)
 
-        # ── сборка target_modules ──
+        # сборка target_modules
         modules = list(BASE_MODULES)
         if enable_ff_video:
             modules += FF_VIDEO
         if enable_ff_audio:
             modules += FF_AUDIO
 
-        # ── формирование config.yaml ──
         config_yaml = CONFIG_TEMPLATE.format(
             seed=seed,
             output_dir=output_dir,
             model_path=model_path,
             text_encoder_path=text_encoder_path,
-            preprocessed_data_root=preprocessed_data_root,
-            # lora
-            lora_rank=lora_rank,
-            lora_alpha=lora_alpha,
-            lora_dropout=lora_dropout,
+            preprocessed_data_root=preprocessed_root,
+            lora_rank=lora_rank, lora_alpha=lora_alpha, lora_dropout=lora_dropout,
             target_modules_yaml=_format_modules(modules),
-            # data
             num_workers=num_workers,
-            # optimization
             learning_rate=f"{learning_rate:.2e}",
-            training_steps=training_steps,
-            batch_size=batch_size,
-            grad_accum=grad_accum,
-            max_grad_norm=max_grad_norm,
-            optimizer_type=optimizer_type,
-            scheduler_type=scheduler_type,
+            training_steps=training_steps, batch_size=batch_size,
+            grad_accum=grad_accum, max_grad_norm=max_grad_norm,
+            optimizer_type=optimizer_type, scheduler_type=scheduler_type,
             grad_checkpoint=_py_bool(grad_checkpoint),
-            # acceleration
-            mixed_precision=mixed_precision,
-            te_8bit=_py_bool(te_8bit),
-            # validation
+            mixed_precision=mixed_precision, te_8bit=_py_bool(te_8bit),
             validation_interval=validation_interval,
-            validation_width=validation_width,
-            validation_height=validation_height,
-            validation_frames=validation_frames,
-            validation_fps=validation_fps,
+            validation_width=validation_width, validation_height=validation_height,
+            validation_frames=validation_frames, validation_fps=validation_fps,
             validation_seed=validation_seed,
             validation_inference_steps=validation_inference_steps,
             validation_guidance=validation_guidance,
@@ -339,47 +390,97 @@ class PyPTVLtx23TrainLora:
             generate_audio=_py_bool(generate_audio),
             generate_video=_py_bool(generate_video),
             validation_prompt=_yaml_escape(validation_prompt.strip()),
-            # checkpoints
-            checkpoint_interval=checkpoint_interval,
-            keep_last_n=keep_last_n,
+            checkpoint_interval=checkpoint_interval, keep_last_n=keep_last_n,
         )
-
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             f.write(config_yaml)
-        _log(log_file, f"Config записан: {CONFIG_PATH}")
-        _log(log_file, f"  lora: rank={lora_rank}, alpha={lora_alpha}, "
-                       f"modules={len(modules)}")
-        _log(log_file, f"  opt:  lr={learning_rate}, steps={training_steps}, "
-                       f"bs={batch_size}x{grad_accum}, {optimizer_type}/{scheduler_type}")
-        _log(log_file, f"  val:  every {validation_interval}, "
-                       f"{validation_width}x{validation_height}x{validation_frames}, "
-                       f"video={generate_video}, audio={generate_audio}")
-        _log(log_file, f"  ckpt: every {checkpoint_interval}, keep {keep_last_n}")
+        log(f"Config записан: {CONFIG_PATH}")
+        log(f"  lora: rank={lora_rank}, alpha={lora_alpha}, modules={len(modules)}")
+        log(f"  opt:  lr={learning_rate}, steps={training_steps}, "
+            f"bs={batch_size}x{grad_accum}, {optimizer_type}/{scheduler_type}")
+        log(f"  val:  every {validation_interval}, "
+            f"{validation_width}x{validation_height}x{validation_frames}")
+        log(f"  ckpt: every {checkpoint_interval}, keep {keep_last_n}")
 
-        # ── запуск train.py ──
-        cmd = ["python", "scripts/train.py", CONFIG_PATH]
-        _log(log_file, f"cwd: {trainer_cwd}")
-        _log(log_file, f"cmd: {' '.join(cmd)}")
-
+        train_cmd = ["python", "scripts/train.py", CONFIG_PATH]
+        # train.py запускаем через Popen (НЕ блокируем ComfyUI) — мониторинг через лог.
         lf = open(log_file, "a", encoding="utf-8")
         lf.write("\n--- stdout/stderr train.py ---\n")
         lf.flush()
-
         try:
             process = subprocess.Popen(
-                cmd,
-                cwd=trainer_cwd,
-                stdout=lf,
-                stderr=subprocess.STDOUT,
+                train_cmd, cwd=trainer_cwd, stdout=lf, stderr=subprocess.STDOUT,
             )
         except Exception as e:
             lf.close()
-            _log(log_file, f"Ошибка Popen: {e}")
+            log(f"Ошибка Popen: {e}")
             raise
+        log(f"Запущен train.py, PID: {process.pid}")
 
-        _log(log_file, f"Запущен train.py, PID: {process.pid}")
+        # ждём завершения в замкнутой ноде (до аплоада нужен финальный чекпоинт)
+        process.wait()
+        lf.close()
+        if process.returncode != 0:
+            log(f"train.py упал, returncode={process.returncode}")
+            raise RuntimeError(
+                f"Training failed: returncode={process.returncode}, см. {log_file}"
+            )
+        log("Тренировка завершена успешно.")
 
-        return (output_dir, log_file, process.pid)
+        # === ШАГ 5: заливка чекпоинтов на HF ===
+        log("=" * 60)
+        log("ШАГ 5/5: загрузка чекпоинтов на HuggingFace")
+        if upload_after:
+            self._upload_checkpoints(
+                output_dir, upload_repo_id, upload_subfolder,
+                hf_token, lora_prefix, log_file,
+            )
+        else:
+            log("Заливка отключена (upload_after=False)")
+
+        # ── финальный лог для UI ──
+        log("=" * 60)
+        log(f"ГОТОВО. Чекпоинты: {output_dir}")
+        log_text = ""
+        if os.path.isfile(log_file):
+            with open(log_file, "r", encoding="utf-8") as f:
+                log_text = f.read()
+        return {"ui": {"text": [log_text]}, "result": ()}
+
+    def _upload_checkpoints(self, output_dir, repo_id, subfolder,
+                            hf_token, lora_prefix, log_file):
+        """Копирует .safetensors с префиксом во временную папку и льёт на HF."""
+        import shutil
+        from pathlib import Path
+
+        src = Path(output_dir)
+        files = sorted(p for p in src.rglob("*")
+                       if p.is_file() and p.suffix == ".safetensors")
+        if not files:
+            cm.log(log_file, TAG, f"WARN: в {output_dir} нет .safetensors")
+            return 0
+
+        tmp_dir = Path("/home/hf_upload")
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
+        prefix = (lora_prefix or "").strip()
+        names = []
+        for f in files:
+            new_name = f"{prefix}{f.name}"
+            shutil.copy2(str(f), str(tmp_dir / new_name))
+            names.append(new_name)
+
+        cm.log(log_file, TAG, f"Заливка {len(names)} чекпоинтов в {repo_id}/{subfolder} ...")
+        ok = cm.hf_upload(
+            repo_id, subfolder, hf_token, tmp_dir,
+            ["*.safetensors"], log_file, TAG,
+        )
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        if ok:
+            cm.log(log_file, TAG, "Залито: " + ", ".join(names))
+        return len(names)
 
 
 NODE_CLASS_MAPPINGS = {
